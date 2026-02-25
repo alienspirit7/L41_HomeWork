@@ -1,0 +1,34 @@
+# Virtual environment
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Model artifacts (large binaries)
+models/*.pt
+models/*.pth
+models/*.onnx
+
+# Nutrition5k raw data (large — downloaded via scripts/download_data.sh)
+data/nutrition5k/metadata/
+data/nutrition5k/imagery/
+
+# Keep processed CSV and sample data
+!data/nutrition5k/processed.csv
+!data/sample/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+runs/

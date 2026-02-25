@@ -1,0 +1,11 @@
+dish_id,image_path,weight_g,carbs_g,protein_g,fat_g
+sample_001,sample/img_001.jpg,350.0,45.0,28.0,12.0
+sample_002,sample/img_002.jpg,280.0,55.0,15.0,8.0
+sample_003,sample/img_003.jpg,420.0,60.0,32.0,18.0
+sample_004,sample/img_004.jpg,200.0,30.0,20.0,10.0
+sample_005,sample/img_005.jpg,310.0,40.0,25.0,14.0
+sample_006,sample/img_006.jpg,380.0,70.0,18.0,22.0
+sample_007,sample/img_007.jpg,150.0,20.0,12.0,5.0
+sample_008,sample/img_008.jpg,450.0,65.0,35.0,20.0
+sample_009,sample/img_009.jpg,260.0,35.0,22.0,11.0
+sample_010,sample/img_010.jpg,340.0,50.0,30.0,16.0
