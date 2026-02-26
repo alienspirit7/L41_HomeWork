@@ -1,0 +1,25 @@
+services:
+
+  # ── API server (inference) ────────────────────────────────────
+  api:
+    build: .
+    ports:
+      - "5000:8080"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    environment:
+      - PORT=8080
+
+  # ── Training (run once, then exits) ───────────────────────────
+  train:
+    build: .
+    command: >
+      python scripts/train.py
+        --config configs/default.yaml
+        --device cpu
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    profiles:
+      - training

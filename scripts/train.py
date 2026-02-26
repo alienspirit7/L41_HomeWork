@@ -64,6 +64,18 @@ def main():
     trainer = Trainer(model, cfg, device=args.device)
     trainer.fit(train_loader, val_loader)
 
+    # Re-save best checkpoint with target stats included
+    import torch
+    ckpt_path = f"{cfg['checkpoint_dir']}/best.pt"
+    state_dict = torch.load(ckpt_path, map_location="cpu",
+                            weights_only=True)
+    torch.save({
+        "model_state_dict": state_dict,
+        "target_mean": t_mean.tolist(),
+        "target_std": t_std.tolist(),
+        "config": cfg,
+    }, ckpt_path)
+
     print("\nDone. Best model saved to "
           f"{cfg['checkpoint_dir']}/best.pt")
 

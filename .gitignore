@@ -18,6 +18,11 @@ models/*.onnx
 data/nutrition5k/metadata/
 data/nutrition5k/imagery/
 
+# Temporary split CSVs (generated during training)
+data/train_split.csv
+data/val_split.csv
+data/test_split.csv
+
 # Keep processed CSV and sample data
 !data/nutrition5k/processed.csv
 !data/sample/

@@ -14,15 +14,16 @@ A deep learning pipeline that estimates **food weight**, **carbohydrates**, **pr
 4. [Data Flow — End-to-End Pipeline](#4-data-flow--end-to-end-pipeline)  
 5. [Theoretical Foundations](#5-theoretical-foundations)  
 6. [Setup Instructions](#6-setup-instructions)  
-7. [Data Acquisition — Nutrition5k](#7-data-acquisition--nutrition5k)  
-8. [Training the Model — Step by Step](#8-training-the-model--step-by-step)  
-9. [Evaluating the Model](#9-evaluating-the-model)  
-10. [Using the Model — Inference](#10-using-the-model--inference)  
-11. [REST API Reference](#11-rest-api-reference)  
-12. [Effective Carbs — Theory & Configuration](#12-effective-carbs--theory--configuration)  
-13. [Personalization](#13-personalization)  
-14. [Configuration Reference](#14-configuration-reference)  
-15. [Supported Backbones](#15-supported-backbones)  
+7. [Docker & Cloud Run](#7-docker--cloud-run)  
+8. [Data Acquisition — Nutrition5k](#8-data-acquisition--nutrition5k)  
+9. [Training the Model — Step by Step](#9-training-the-model--step-by-step)  
+10. [Evaluating the Model](#10-evaluating-the-model)  
+11. [Using the Model — Inference](#11-using-the-model--inference)  
+12. [REST API Reference](#12-rest-api-reference)  
+13. [Effective Carbs — Theory & Configuration](#13-effective-carbs--theory--configuration)  
+14. [Personalization](#14-personalization)  
+15. [Configuration Reference](#15-configuration-reference)  
+16. [Supported Backbones](#16-supported-backbones)  
 
 ---
 
@@ -95,6 +96,9 @@ L41_HomeWork/
 │       └── img_001..010.jpg       # Placeholder images (224×224)
 │
 ├── models/                        # Saved model checkpoints
+├── Dockerfile                     # Multi-stage Docker build (Cloud Run)
+├── docker-compose.yml             # Local dev: api + training services
+├── .dockerignore                  # Excludes venv, dataset, IDE files
 ├── requirements.txt               # Python dependencies
 ├── .gitignore
 └── README.md                      # This file
@@ -503,7 +507,70 @@ print('✅ Installation verified. Backbone:', cfg['backbone'])
 
 ---
 
-## 7. Data Acquisition — Nutrition5k
+## 7. Docker & Cloud Run
+
+The project includes a **multi-stage Dockerfile** optimised for deployment to **Google Cloud Run** (CPU-only, serverless).
+
+### Build the Docker Image
+
+```bash
+docker build -t food-macro-api .
+```
+
+The image uses **CPU-only PyTorch** (~1.5 GB) to keep cold starts fast on Cloud Run.
+
+### Run Locally with Docker
+
+```bash
+# Start the API server
+docker run --rm -p 5000:8080 \
+  -v ./models:/app/models \
+  food-macro-api
+
+# Test it
+curl http://localhost:5000/health
+```
+
+### Run with Docker Compose
+
+```bash
+# Start the API
+docker compose up api
+
+# Run training (one-off)
+docker compose run --rm train
+```
+
+### Deploy to Cloud Run
+
+```bash
+# 1. Build & push to Google Artifact Registry
+export PROJECT_ID=your-gcp-project
+export REGION=us-central1
+
+gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/docker/food-macro-api
+
+# 2. Deploy
+gcloud run deploy food-macro-api \
+  --image ${REGION}-docker.pkg.dev/${PROJECT_ID}/docker/food-macro-api \
+  --region ${REGION} \
+  --platform managed \
+  --allow-unauthenticated \
+  --memory 2Gi
+```
+
+Cloud Run automatically sets the `PORT` environment variable — the API reads it at startup.
+
+### Docker Architecture
+
+| Stage | Base | Purpose |
+|-------|------|---------|
+| Builder | `python:3.12-slim` | Install CPU-only PyTorch + all deps into venv |
+| Runtime | `python:3.12-slim` | Copy venv + app code only → minimal final image |
+
+---
+
+## 8. Data Acquisition — Nutrition5k
 
 ### About the Dataset
 
@@ -563,7 +630,7 @@ dish_1556572860,imagery/realsense_overhead/dish_1556572860/rgb.png,310.0,38.5,22
 
 ---
 
-## 8. Training the Model — Step by Step
+## 9. Training the Model — Step by Step
 
 ### Quick Start
 
@@ -654,7 +721,7 @@ All configurable in `configs/default.yaml`:
 
 ---
 
-## 9. Evaluating the Model
+## 10. Evaluating the Model
 
 ### Metrics Computed
 
@@ -687,7 +754,7 @@ The system tracks bias separately and surfaces it in evaluation output.
 
 ---
 
-## 10. Using the Model — Inference
+## 11. Using the Model — Inference
 
 ### CLI Prediction (Single Image)
 
@@ -768,7 +835,7 @@ The exported model:
 
 ---
 
-## 11. REST API Reference
+## 12. REST API Reference
 
 ### Start the Server
 
@@ -856,7 +923,7 @@ Response:
 
 ---
 
-## 12. Effective Carbs — Theory & Configuration
+## 13. Effective Carbs — Theory & Configuration
 
 ### Why "Effective Carbs"?
 
@@ -915,7 +982,7 @@ These parameters should be **tuned per-user** with guidance from their endocrino
 
 ---
 
-## 13. Personalization
+## 14. Personalization
 
 ### Concept
 
@@ -971,7 +1038,7 @@ This corrects for systematic errors specific to the user's food habits (e.g., if
 
 ---
 
-## 14. Configuration Reference
+## 15. Configuration Reference
 
 All parameters in `configs/default.yaml`:
 
@@ -1013,7 +1080,7 @@ All parameters in `configs/default.yaml`:
 
 ---
 
-## 15. Supported Backbones
+## 16. Supported Backbones
 
 The backbone can be swapped by changing one line in `configs/default.yaml`:
 

@@ -16,12 +16,25 @@ from src.effective_carbs import effective_carbs_from_config
 
 
 def load_model(cfg: dict, checkpoint: str | None = None, device="cpu"):
-    """Instantiate model and optionally load checkpoint."""
+    """Instantiate model and optionally load checkpoint.
+
+    Handles two checkpoint formats:
+      - Dict with 'model_state_dict', 'target_mean', 'target_std'
+      - Legacy plain state_dict
+    """
     model = FoodMacroModel(cfg)
     if checkpoint and Path(checkpoint).exists():
-        state = torch.load(checkpoint, map_location=device,
-                           weights_only=True)
-        model.load_state_dict(state)
+        ckpt = torch.load(checkpoint, map_location=device,
+                          weights_only=False)
+        if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
+            model.load_state_dict(ckpt["model_state_dict"])
+            # Inject target stats into config for de-normalisation
+            if "target_mean" in ckpt:
+                cfg["target_mean"] = ckpt["target_mean"]
+            if "target_std" in ckpt:
+                cfg["target_std"] = ckpt["target_std"]
+        else:
+            model.load_state_dict(ckpt)
     model.to(device)
     model.eval()
     return model
