@@ -1,15 +1,19 @@
 /**
  * Multi-Dish Meal Analyser — Client-Side Logic.
  *
- * Flow: set up 1-5 dishes with images → Analyse → view results → New Analysis.
+ * Each dish can be:
+ *   - "single"   → user types food name + weight → USDA lookup
+ *   - "composed" → user uploads image(s) → Nutrition5k model
  */
 
 const MAX_DISHES = 5;
 const MAX_IMAGES = 3;
-const ACCEPTED = 'image/*';
 
 let dishCount = 0;
-let dishData = {};  // { dishId: { name, files: File[] } }
+let dishData = {};
+// { id: { mode: 'single'|'composed', name, files: File[], weight } }
+
+let foodList = [];  // cached for autocomplete
 
 /* ── Initialise ───────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
@@ -20,6 +24,12 @@ document.addEventListener('DOMContentLoaded', () => {
         .addEventListener('click', analyseMeal);
     document.getElementById('newAnalysisBtn')
         .addEventListener('click', resetAll);
+
+    // Pre-fetch food list for autocomplete
+    fetch('/api/foods')
+        .then(r => r.json())
+        .then(list => { foodList = list; })
+        .catch(() => { });
 });
 
 /* ── Dish Management ──────────────────────────────── */
@@ -27,7 +37,7 @@ function addDish() {
     if (Object.keys(dishData).length >= MAX_DISHES) return;
 
     const id = dishCount++;
-    dishData[id] = { name: '', files: [] };
+    dishData[id] = { mode: 'single', name: '', files: [], weight: '' };
 
     const card = document.createElement('div');
     card.className = 'dish-card';
@@ -35,30 +45,100 @@ function addDish() {
     card.innerHTML = `
         <div class="dish-header">
             <div class="dish-number">${Object.keys(dishData).length}</div>
-            <input type="text" class="dish-name-input"
-                   placeholder="Dish name (optional)"
-                   oninput="dishData[${id}].name = this.value">
+
+            <!-- Mode toggle -->
+            <div class="mode-toggle">
+                <button class="mode-btn active" id="modeBtn-single-${id}"
+                        onclick="setMode(${id}, 'single')">
+                    🥑 Single Item
+                </button>
+                <button class="mode-btn" id="modeBtn-composed-${id}"
+                        onclick="setMode(${id}, 'composed')">
+                    🍽️ Composed Dish
+                </button>
+            </div>
+
             <button class="remove-dish-btn"
                     onclick="removeDish(${id})"
                     title="Remove dish">&times;</button>
         </div>
-        <div class="upload-area">
-            <div class="image-previews" id="previews-${id}"></div>
-            <button class="upload-btn" id="uploadBtn-${id}"
-                    onclick="triggerUpload(${id})">
-                <span class="icon">📷</span>
-                Add photo
-            </button>
-            <input type="file" id="fileInput-${id}"
-                   accept="${ACCEPTED}" multiple hidden
-                   onchange="handleFiles(${id}, this.files)">
+
+        <!-- Single item inputs -->
+        <div class="single-inputs" id="singleInputs-${id}">
+            <input type="text" class="dish-name-input"
+                   id="nameInput-${id}"
+                   placeholder="Food name (e.g. tomato, chicken breast)"
+                   list="foodSuggestions-${id}"
+                   oninput="dishData[${id}].name = this.value">
+            <datalist id="foodSuggestions-${id}">
+                ${foodList.map(f => `<option value="${f}">`).join('')}
+            </datalist>
+            <div class="weight-input-row">
+                <input type="number" class="weight-input"
+                       id="weightInput-${id}"
+                       placeholder="Weight (g)"
+                       min="1" step="1"
+                       oninput="dishData[${id}].weight = this.value">
+                <span class="weight-unit">g</span>
+            </div>
         </div>
-        <div class="image-count" id="count-${id}">
-            0 / ${MAX_IMAGES} images
+
+        <!-- Composed dish inputs (image upload) -->
+        <div class="composed-inputs hidden" id="composedInputs-${id}">
+            <input type="text" class="dish-name-input"
+                   placeholder="Dish name (optional)"
+                   oninput="dishData[${id}].name = this.value">
+            <div class="upload-area">
+                <div class="image-previews" id="previews-${id}"></div>
+                <button class="upload-btn" id="uploadBtn-${id}"
+                        onclick="triggerUpload(${id})">
+                    <span class="icon">📷</span>
+                    Add photo
+                </button>
+                <input type="file" id="fileInput-${id}"
+                       accept="image/*" multiple hidden
+                       onchange="handleFiles(${id}, this.files)">
+            </div>
+            <div class="image-count" id="count-${id}">
+                0 / ${MAX_IMAGES} images
+            </div>
         </div>
     `;
 
     document.getElementById('dishesContainer').appendChild(card);
+    updateUI();
+}
+
+function setMode(id, mode) {
+    dishData[id].mode = mode;
+    dishData[id].files = [];
+    dishData[id].name = '';
+    dishData[id].weight = '';
+
+    // Toggle UI
+    const single = document.getElementById(`singleInputs-${id}`);
+    const composed = document.getElementById(`composedInputs-${id}`);
+    const btnSingle = document.getElementById(`modeBtn-single-${id}`);
+    const btnComposed = document.getElementById(`modeBtn-composed-${id}`);
+
+    if (mode === 'single') {
+        single.classList.remove('hidden');
+        composed.classList.add('hidden');
+        btnSingle.classList.add('active');
+        btnComposed.classList.remove('active');
+    } else {
+        single.classList.add('hidden');
+        composed.classList.remove('hidden');
+        btnSingle.classList.remove('active');
+        btnComposed.classList.add('active');
+    }
+
+    // Clear inputs
+    const nameInput = document.getElementById(`nameInput-${id}`);
+    if (nameInput) nameInput.value = '';
+    const weightInput = document.getElementById(`weightInput-${id}`);
+    if (weightInput) weightInput.value = '';
+    renderPreviews(id);
     updateUI();
 }
 
@@ -108,6 +188,7 @@ function removeImage(dishId, fileIdx) {
 
 function renderPreviews(id) {
     const container = document.getElementById(`previews-${id}`);
+    if (!container) return;
     const dish = dishData[id];
     container.innerHTML = '';
 
@@ -133,49 +214,51 @@ function renderPreviews(id) {
     });
 
     const count = document.getElementById(`count-${id}`);
-    count.textContent = `${dish.files.length} / ${MAX_IMAGES} images`;
+    if (count) {
+        count.textContent = `${dish.files.length} / ${MAX_IMAGES} images`;
+    }
 
     const btn = document.getElementById(`uploadBtn-${id}`);
-    if (dish.files.length >= MAX_IMAGES) {
-        btn.classList.add('disabled');
-    } else {
-        btn.classList.remove('disabled');
+    if (btn) {
+        btn.classList.toggle('disabled', dish.files.length >= MAX_IMAGES);
     }
 }
 
 /* ── UI State ─────────────────────────────────────── */
 function updateUI() {
     const dishIds = Object.keys(dishData);
-    const hasImages = dishIds.some(id => dishData[id].files.length > 0);
+    const hasData = dishIds.some(id => {
+        const d = dishData[id];
+        if (d.mode === 'single') {
+            return d.name.trim() && d.weight;
+        }
+        return d.files.length > 0;
+    });
 
     document.getElementById('addDishBtn').disabled =
         dishIds.length >= MAX_DISHES;
-    document.getElementById('analyseBtn').disabled = !hasImages;
+    document.getElementById('analyseBtn').disabled = !hasData;
 }
 
 /* ── Reset ────────────────────────────────────────── */
 function resetAll() {
-    // Clear all data
     dishData = {};
     dishCount = 0;
-
-    // Clear UI
     document.getElementById('dishesContainer').innerHTML = '';
     document.getElementById('results').classList.remove('active');
     document.getElementById('errorMsg').classList.remove('active');
-
-    // Show setup section, hide restart button
     document.getElementById('setupSection').classList.remove('hidden');
     document.getElementById('newAnalysisBtn').classList.add('hidden');
-
-    // Add first dish card
     addDish();
 }
 
 /* ── API Call ─────────────────────────────────────── */
 async function analyseMeal() {
-    const dishIds = Object.keys(dishData)
-        .filter(id => dishData[id].files.length > 0);
+    const dishIds = Object.keys(dishData).filter(id => {
+        const d = dishData[id];
+        if (d.mode === 'single') return d.name.trim() && d.weight;
+        return d.files.length > 0;
+    });
 
     if (dishIds.length === 0) return;
 
@@ -186,11 +269,17 @@ async function analyseMeal() {
     const formData = new FormData();
     dishIds.forEach((id, idx) => {
         const dish = dishData[id];
-        dish.files.forEach(file => {
-            formData.append(`dish_${idx}_images`, file);
-        });
-        const name = dish.name || `Dish ${idx + 1}`;
-        formData.append(`dish_${idx}_name`, name);
+        formData.append(`dish_${idx}_mode`, dish.mode);
+        formData.append(`dish_${idx}_name`,
+            dish.name || `Dish ${idx + 1}`);
+
+        if (dish.mode === 'single') {
+            formData.append(`dish_${idx}_weight`, dish.weight);
+        } else {
+            dish.files.forEach(file => {
+                formData.append(`dish_${idx}_images`, file);
+            });
+        }
     });
 
     try {
@@ -205,7 +294,7 @@ async function analyseMeal() {
             throw new Error(data.error || 'Analysis failed');
         }
 
-        // Attach preview URLs to results for display
+        // Collect preview URLs for composed dishes
         const previewUrls = dishIds.map(id => {
             const files = dishData[id].files;
             return files.length > 0
@@ -214,9 +303,9 @@ async function analyseMeal() {
         });
         renderResults(data, previewUrls);
 
-        // Hide setup section, show restart button
         document.getElementById('setupSection').classList.add('hidden');
-        document.getElementById('newAnalysisBtn').classList.remove('hidden');
+        document.getElementById('newAnalysisBtn')
+            .classList.remove('hidden');
 
     } catch (err) {
         showError(err.message);
@@ -235,13 +324,23 @@ function renderResults(data, previewUrls) {
         const thumbHtml = thumbSrc
             ? `<img class="dish-result-thumb" src="${thumbSrc}" alt="">`
             : '';
+        const sourceTag = dish.source
+            ? `<span class="source-tag">${dish.source === 'usda_api' ? '🇺🇸 USDA' : '📖 Local DB'}</span>`
+            : '';
+        const descTag = dish.usda_description && dish.usda_description !== dish.name
+            ? `<span class="usda-desc">${dish.usda_description}</span>`
+            : '';
         return `
         <div class="dish-result">
             <div class="dish-result-header">
                 ${thumbHtml}
                 <span class="dish-result-name">${dish.name}</span>
+                ${sourceTag}
+                ${descTag}
                 <span class="dish-result-images">
-                    ${dish.num_images} image${dish.num_images > 1 ? 's' : ''}
+                    ${dish.num_images > 0
+                ? `${dish.num_images} image${dish.num_images > 1 ? 's' : ''}`
+                : `${dish.weight_g}g`}
                 </span>
             </div>
             <div class="macro-grid">
@@ -265,7 +364,6 @@ function renderResults(data, previewUrls) {
         </div>
     `;
     }).join('');
-
 
     const t = data.totals;
     const b = data.bolus_recommendation;

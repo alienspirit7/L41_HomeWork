@@ -137,27 +137,56 @@ def _save_upload(f) -> str:
     return path
 
 
+@meal_bp.route("/api/foods", methods=["GET"])
+def get_foods():
+    """Return list of known food names for autocomplete."""
+    return jsonify(list_foods())
+
+
 @meal_bp.route("/api/analyse_meal", methods=["POST"])
 def analyse_meal():
-    """Analyse a multi-dish meal."""
+    """Analyse a multi-dish meal (single-item or composed)."""
     dishes = []
     dish_idx = 0
 
     while dish_idx < MAX_DISHES:
-        key = f"dish_{dish_idx}_images"
-        files = request.files.getlist(key)
-        if not files or not files[0].filename:
-            break
+        mode_key = f"dish_{dish_idx}_mode"
+        mode = request.form.get(mode_key, "composed")
 
-        if len(files) > MAX_IMAGES_PER_DISH:
-            return jsonify({
-                "error": f"Dish {dish_idx + 1}: max "
-                         f"{MAX_IMAGES_PER_DISH} images allowed",
-            }), 400
+        if mode == "single":
+            # Single item: name + weight from form
+            name = request.form.get(
+                f"dish_{dish_idx}_name", "",
+            ).strip()
+            weight_str = request.form.get(
+                f"dish_{dish_idx}_weight", "",
+            )
+            if not name:
+                break
+            dishes.append({
+                "mode": "single", "name": name,
+                "weight": weight_str,
+            })
+        else:
+            # Composed dish: images from upload
+            key = f"dish_{dish_idx}_images"
+            files = request.files.getlist(key)
+            if not files or not files[0].filename:
+                break
+            if len(files) > MAX_IMAGES_PER_DISH:
+                return jsonify({
+                    "error": f"Dish {dish_idx + 1}: max "
+                             f"{MAX_IMAGES_PER_DISH} images",
+                }), 400
+            name_key = f"dish_{dish_idx}_name"
+            dish_name = request.form.get(
+                name_key, f"Dish {dish_idx + 1}",
+            )
+            dishes.append({
+                "mode": "composed", "name": dish_name,
+                "files": files,
+            })
 
-        name_key = f"dish_{dish_idx}_name"
-        dish_name = request.form.get(name_key, f"Dish {dish_idx + 1}")
-        dishes.append({"files": files, "name": dish_name})
         dish_idx += 1
 
     if not dishes:
@@ -168,22 +197,58 @@ def analyse_meal():
 
     try:
         for dish in dishes:
-            # Save each uploaded image as a clean PNG
-            temp_paths = []
-            for f in dish["files"]:
-                path = _save_upload(f)
-                temp_paths.append(path)
-                all_temp_paths.append(path)
+            if dish["mode"] == "single":
+                # ── Single item: USDA / local lookup ──
+                try:
+                    weight = float(dish["weight"])
+                except (ValueError, TypeError):
+                    return jsonify({
+                        "error": f"Invalid weight for '{dish['name']}'",
+                    }), 400
 
-            # Predict macros
-            ckpt = _checkpoint if os.path.exists(_checkpoint) else None
-            prediction = predict_meal(
-                temp_paths, _cfg, checkpoint=ckpt,
-            )
-            prediction.pop("bolus_recommendation", None)
-            prediction["name"] = dish["name"]
-            prediction["num_images"] = len(temp_paths)
-            results.append(prediction)
+                macros = calculate_macros(dish["name"], weight)
+                if macros is None:
+                    return jsonify({
+                        "error": f"Food not found: '{dish['name']}'. "
+                                 "Try a different name.",
+                    }), 404
+
+                prediction = {
+                    "weight_g": macros["weight_g"],
+                    "carbs_g": macros["carbs_g"],
+                    "protein_g": macros["protein_g"],
+                    "fat_g": macros["fat_g"],
+                    "name": dish["name"],
+                    "num_images": 0,
+                    "mode": "single",
+                    "source": macros.get("source", ""),
+                    "usda_description": macros.get(
+                        "usda_description", dish["name"],
+                    ),
+                }
+                results.append(prediction)
+
+            else:
+                # ── Composed dish: Nutrition5k model ──
+                temp_paths = []
+                for f in dish["files"]:
+                    path = _save_upload(f)
+                    temp_paths.append(path)
+                    all_temp_paths.append(path)
+
+                ckpt = (
+                    _checkpoint
+                    if os.path.exists(_checkpoint)
+                    else None
+                )
+                prediction = predict_meal(
+                    temp_paths, _cfg, checkpoint=ckpt,
+                )
+                prediction.pop("bolus_recommendation", None)
+                prediction["name"] = dish["name"]
+                prediction["num_images"] = len(temp_paths)
+                prediction["mode"] = "composed"
+                results.append(prediction)
 
         # Meal totals
         total_weight = sum(d["weight_g"] for d in results)

@@ -1,0 +1,695 @@
+{
+    "apple": {
+        "carbs_g": 13.8,
+        "protein_g": 0.3,
+        "fat_g": 0.2,
+        "fiber_g": 2.4,
+        "calories": 52
+    },
+    "avocado": {
+        "carbs_g": 8.5,
+        "protein_g": 2.0,
+        "fat_g": 14.7,
+        "fiber_g": 6.7,
+        "calories": 160
+    },
+    "banana": {
+        "carbs_g": 22.8,
+        "protein_g": 1.1,
+        "fat_g": 0.3,
+        "fiber_g": 2.6,
+        "calories": 89
+    },
+    "blueberry": {
+        "carbs_g": 14.5,
+        "protein_g": 0.7,
+        "fat_g": 0.3,
+        "fiber_g": 2.4,
+        "calories": 57
+    },
+    "broccoli": {
+        "carbs_g": 6.6,
+        "protein_g": 2.8,
+        "fat_g": 0.4,
+        "fiber_g": 2.6,
+        "calories": 34
+    },
+    "carrot": {
+        "carbs_g": 9.6,
+        "protein_g": 0.9,
+        "fat_g": 0.2,
+        "fiber_g": 2.8,
+        "calories": 41
+    },
+    "cauliflower": {
+        "carbs_g": 5.0,
+        "protein_g": 1.9,
+        "fat_g": 0.3,
+        "fiber_g": 2.0,
+        "calories": 25
+    },
+    "celery": {
+        "carbs_g": 3.0,
+        "protein_g": 0.7,
+        "fat_g": 0.2,
+        "fiber_g": 1.6,
+        "calories": 14
+    },
+    "cherry": {
+        "carbs_g": 16.0,
+        "protein_g": 1.1,
+        "fat_g": 0.2,
+        "fiber_g": 2.1,
+        "calories": 63
+    },
+    "chicken breast": {
+        "carbs_g": 0.0,
+        "protein_g": 31.0,
+        "fat_g": 3.6,
+        "fiber_g": 0.0,
+        "calories": 165
+    },
+    "chicken thigh": {
+        "carbs_g": 0.0,
+        "protein_g": 26.0,
+        "fat_g": 10.9,
+        "fiber_g": 0.0,
+        "calories": 209
+    },
+    "chickpea": {
+        "carbs_g": 27.4,
+        "protein_g": 8.9,
+        "fat_g": 2.6,
+        "fiber_g": 7.6,
+        "calories": 164
+    },
+    "corn": {
+        "carbs_g": 19.0,
+        "protein_g": 3.3,
+        "fat_g": 1.5,
+        "fiber_g": 2.7,
+        "calories": 86
+    },
+    "cottage cheese": {
+        "carbs_g": 3.4,
+        "protein_g": 11.1,
+        "fat_g": 4.3,
+        "fiber_g": 0.0,
+        "calories": 98
+    },
+    "cucumber": {
+        "carbs_g": 3.6,
+        "protein_g": 0.7,
+        "fat_g": 0.1,
+        "fiber_g": 0.5,
+        "calories": 15
+    },
+    "egg": {
+        "carbs_g": 1.1,
+        "protein_g": 12.6,
+        "fat_g": 9.5,
+        "fiber_g": 0.0,
+        "calories": 143
+    },
+    "eggplant": {
+        "carbs_g": 5.9,
+        "protein_g": 1.0,
+        "fat_g": 0.2,
+        "fiber_g": 3.0,
+        "calories": 25
+    },
+    "grape": {
+        "carbs_g": 18.1,
+        "protein_g": 0.7,
+        "fat_g": 0.2,
+        "fiber_g": 0.9,
+        "calories": 69
+    },
+    "green bean": {
+        "carbs_g": 7.0,
+        "protein_g": 1.8,
+        "fat_g": 0.2,
+        "fiber_g": 2.7,
+        "calories": 31
+    },
+    "green pepper": {
+        "carbs_g": 4.6,
+        "protein_g": 0.9,
+        "fat_g": 0.2,
+        "fiber_g": 1.7,
+        "calories": 20
+    },
+    "ground beef": {
+        "carbs_g": 0.0,
+        "protein_g": 26.1,
+        "fat_g": 15.0,
+        "fiber_g": 0.0,
+        "calories": 250
+    },
+    "ham": {
+        "carbs_g": 1.5,
+        "protein_g": 21.0,
+        "fat_g": 5.0,
+        "fiber_g": 0.0,
+        "calories": 145
+    },
+    "honey": {
+        "carbs_g": 82.4,
+        "protein_g": 0.3,
+        "fat_g": 0.0,
+        "fiber_g": 0.2,
+        "calories": 304
+    },
+    "kiwi": {
+        "carbs_g": 14.7,
+        "protein_g": 1.1,
+        "fat_g": 0.5,
+        "fiber_g": 3.0,
+        "calories": 61
+    },
+    "lemon": {
+        "carbs_g": 9.3,
+        "protein_g": 1.1,
+        "fat_g": 0.3,
+        "fiber_g": 2.8,
+        "calories": 29
+    },
+    "lentil": {
+        "carbs_g": 20.1,
+        "protein_g": 9.0,
+        "fat_g": 0.4,
+        "fiber_g": 7.9,
+        "calories": 116
+    },
+    "lettuce": {
+        "carbs_g": 2.9,
+        "protein_g": 1.4,
+        "fat_g": 0.2,
+        "fiber_g": 1.3,
+        "calories": 15
+    },
+    "mango": {
+        "carbs_g": 15.0,
+        "protein_g": 0.8,
+        "fat_g": 0.4,
+        "fiber_g": 1.6,
+        "calories": 60
+    },
+    "melon": {
+        "carbs_g": 8.2,
+        "protein_g": 0.8,
+        "fat_g": 0.2,
+        "fiber_g": 0.9,
+        "calories": 34
+    },
+    "milk": {
+        "carbs_g": 4.8,
+        "protein_g": 3.2,
+        "fat_g": 3.3,
+        "fiber_g": 0.0,
+        "calories": 61
+    },
+    "mushroom": {
+        "carbs_g": 3.3,
+        "protein_g": 3.1,
+        "fat_g": 0.3,
+        "fiber_g": 1.0,
+        "calories": 22
+    },
+    "oatmeal": {
+        "carbs_g": 12.0,
+        "protein_g": 2.4,
+        "fat_g": 1.4,
+        "fiber_g": 1.7,
+        "calories": 68
+    },
+    "olive": {
+        "carbs_g": 3.8,
+        "protein_g": 1.0,
+        "fat_g": 11.0,
+        "fiber_g": 3.2,
+        "calories": 115
+    },
+    "onion": {
+        "carbs_g": 9.3,
+        "protein_g": 1.1,
+        "fat_g": 0.1,
+        "fiber_g": 1.7,
+        "calories": 40
+    },
+    "orange": {
+        "carbs_g": 11.8,
+        "protein_g": 0.9,
+        "fat_g": 0.1,
+        "fiber_g": 2.4,
+        "calories": 47
+    },
+    "pasta cooked": {
+        "carbs_g": 25.0,
+        "protein_g": 5.0,
+        "fat_g": 0.9,
+        "fiber_g": 1.8,
+        "calories": 131
+    },
+    "peach": {
+        "carbs_g": 9.5,
+        "protein_g": 0.9,
+        "fat_g": 0.3,
+        "fiber_g": 1.5,
+        "calories": 39
+    },
+    "peanut butter": {
+        "carbs_g": 20.0,
+        "protein_g": 25.0,
+        "fat_g": 50.4,
+        "fiber_g": 6.0,
+        "calories": 588
+    },
+    "pear": {
+        "carbs_g": 15.2,
+        "protein_g": 0.4,
+        "fat_g": 0.1,
+        "fiber_g": 3.1,
+        "calories": 57
+    },
+    "pineapple": {
+        "carbs_g": 13.1,
+        "protein_g": 0.5,
+        "fat_g": 0.1,
+        "fiber_g": 1.4,
+        "calories": 50
+    },
+    "plum": {
+        "carbs_g": 11.4,
+        "protein_g": 0.7,
+        "fat_g": 0.3,
+        "fiber_g": 1.4,
+        "calories": 46
+    },
+    "pork chop": {
+        "carbs_g": 0.0,
+        "protein_g": 27.3,
+        "fat_g": 14.0,
+        "fiber_g": 0.0,
+        "calories": 242
+    },
+    "potato": {
+        "carbs_g": 17.5,
+        "protein_g": 2.0,
+        "fat_g": 0.1,
+        "fiber_g": 2.1,
+        "calories": 77
+    },
+    "quinoa cooked": {
+        "carbs_g": 21.3,
+        "protein_g": 4.4,
+        "fat_g": 1.9,
+        "fiber_g": 2.8,
+        "calories": 120
+    },
+    "raspberry": {
+        "carbs_g": 11.9,
+        "protein_g": 1.2,
+        "fat_g": 0.7,
+        "fiber_g": 6.5,
+        "calories": 52
+    },
+    "red pepper": {
+        "carbs_g": 6.0,
+        "protein_g": 1.0,
+        "fat_g": 0.3,
+        "fiber_g": 2.1,
+        "calories": 31
+    },
+    "rice cooked": {
+        "carbs_g": 28.2,
+        "protein_g": 2.7,
+        "fat_g": 0.3,
+        "fiber_g": 0.4,
+        "calories": 130
+    },
+    "salmon": {
+        "carbs_g": 0.0,
+        "protein_g": 20.4,
+        "fat_g": 13.4,
+        "fiber_g": 0.0,
+        "calories": 208
+    },
+    "shrimp": {
+        "carbs_g": 0.2,
+        "protein_g": 24.0,
+        "fat_g": 0.3,
+        "fiber_g": 0.0,
+        "calories": 99
+    },
+    "spinach": {
+        "carbs_g": 3.6,
+        "protein_g": 2.9,
+        "fat_g": 0.4,
+        "fiber_g": 2.2,
+        "calories": 23
+    },
+    "strawberry": {
+        "carbs_g": 7.7,
+        "protein_g": 0.7,
+        "fat_g": 0.3,
+        "fiber_g": 2.0,
+        "calories": 32
+    },
+    "sweet potato": {
+        "carbs_g": 20.1,
+        "protein_g": 1.6,
+        "fat_g": 0.1,
+        "fiber_g": 3.0,
+        "calories": 86
+    },
+    "tofu": {
+        "carbs_g": 1.9,
+        "protein_g": 8.1,
+        "fat_g": 4.8,
+        "fiber_g": 0.3,
+        "calories": 76
+    },
+    "tomato": {
+        "carbs_g": 3.9,
+        "protein_g": 0.9,
+        "fat_g": 0.2,
+        "fiber_g": 1.2,
+        "calories": 18
+    },
+    "tuna": {
+        "carbs_g": 0.0,
+        "protein_g": 29.9,
+        "fat_g": 0.5,
+        "fiber_g": 0.0,
+        "calories": 130
+    },
+    "turkey breast": {
+        "carbs_g": 0.0,
+        "protein_g": 29.0,
+        "fat_g": 1.0,
+        "fiber_g": 0.0,
+        "calories": 135
+    },
+    "walnut": {
+        "carbs_g": 13.7,
+        "protein_g": 15.2,
+        "fat_g": 65.2,
+        "fiber_g": 6.7,
+        "calories": 654
+    },
+    "watermelon": {
+        "carbs_g": 7.6,
+        "protein_g": 0.6,
+        "fat_g": 0.2,
+        "fiber_g": 0.4,
+        "calories": 30
+    },
+    "white bread": {
+        "carbs_g": 49.0,
+        "protein_g": 9.0,
+        "fat_g": 3.2,
+        "fiber_g": 2.7,
+        "calories": 265
+    },
+    "whole wheat bread": {
+        "carbs_g": 43.0,
+        "protein_g": 13.0,
+        "fat_g": 3.4,
+        "fiber_g": 7.0,
+        "calories": 247
+    },
+    "yogurt": {
+        "carbs_g": 3.6,
+        "protein_g": 10.0,
+        "fat_g": 0.7,
+        "fiber_g": 0.0,
+        "calories": 59
+    },
+    "zucchini": {
+        "carbs_g": 3.1,
+        "protein_g": 1.2,
+        "fat_g": 0.3,
+        "fiber_g": 1.0,
+        "calories": 17
+    },
+    "almond": {
+        "carbs_g": 21.6,
+        "protein_g": 21.2,
+        "fat_g": 49.9,
+        "fiber_g": 12.5,
+        "calories": 579
+    },
+    "asparagus": {
+        "carbs_g": 3.9,
+        "protein_g": 2.2,
+        "fat_g": 0.1,
+        "fiber_g": 2.1,
+        "calories": 20
+    },
+    "bacon": {
+        "carbs_g": 1.4,
+        "protein_g": 37.0,
+        "fat_g": 42.0,
+        "fiber_g": 0.0,
+        "calories": 541
+    },
+    "beef steak": {
+        "carbs_g": 0.0,
+        "protein_g": 26.0,
+        "fat_g": 19.5,
+        "fiber_g": 0.0,
+        "calories": 271
+    },
+    "beet": {
+        "carbs_g": 9.6,
+        "protein_g": 1.6,
+        "fat_g": 0.2,
+        "fiber_g": 2.8,
+        "calories": 43
+    },
+    "butter": {
+        "carbs_g": 0.1,
+        "protein_g": 0.9,
+        "fat_g": 81.1,
+        "fiber_g": 0.0,
+        "calories": 717
+    },
+    "cabbage": {
+        "carbs_g": 5.8,
+        "protein_g": 1.3,
+        "fat_g": 0.1,
+        "fiber_g": 2.5,
+        "calories": 25
+    },
+    "cashew": {
+        "carbs_g": 30.2,
+        "protein_g": 18.2,
+        "fat_g": 43.9,
+        "fiber_g": 3.3,
+        "calories": 553
+    },
+    "cheddar cheese": {
+        "carbs_g": 1.3,
+        "protein_g": 25.0,
+        "fat_g": 33.1,
+        "fiber_g": 0.0,
+        "calories": 403
+    },
+    "cream cheese": {
+        "carbs_g": 4.1,
+        "protein_g": 6.2,
+        "fat_g": 34.2,
+        "fiber_g": 0.0,
+        "calories": 342
+    },
+    "date": {
+        "carbs_g": 75.0,
+        "protein_g": 1.8,
+        "fat_g": 0.2,
+        "fiber_g": 6.7,
+        "calories": 277
+    },
+    "fig": {
+        "carbs_g": 19.2,
+        "protein_g": 0.8,
+        "fat_g": 0.3,
+        "fiber_g": 2.9,
+        "calories": 74
+    },
+    "garlic": {
+        "carbs_g": 33.1,
+        "protein_g": 6.4,
+        "fat_g": 0.5,
+        "fiber_g": 2.1,
+        "calories": 149
+    },
+    "ginger": {
+        "carbs_g": 17.8,
+        "protein_g": 1.8,
+        "fat_g": 0.8,
+        "fiber_g": 2.0,
+        "calories": 80
+    },
+    "grapefruit": {
+        "carbs_g": 10.7,
+        "protein_g": 0.8,
+        "fat_g": 0.1,
+        "fiber_g": 1.6,
+        "calories": 42
+    },
+    "hummus": {
+        "carbs_g": 14.3,
+        "protein_g": 7.9,
+        "fat_g": 9.6,
+        "fiber_g": 6.0,
+        "calories": 166
+    },
+    "lamb": {
+        "carbs_g": 0.0,
+        "protein_g": 25.6,
+        "fat_g": 20.9,
+        "fiber_g": 0.0,
+        "calories": 294
+    },
+    "mozzarella": {
+        "carbs_g": 2.2,
+        "protein_g": 22.2,
+        "fat_g": 22.4,
+        "fiber_g": 0.0,
+        "calories": 280
+    },
+    "oat": {
+        "carbs_g": 66.3,
+        "protein_g": 16.9,
+        "fat_g": 6.9,
+        "fiber_g": 10.6,
+        "calories": 389
+    },
+    "olive oil": {
+        "carbs_g": 0.0,
+        "protein_g": 0.0,
+        "fat_g": 100.0,
+        "fiber_g": 0.0,
+        "calories": 884
+    },
+    "parmesan": {
+        "carbs_g": 3.2,
+        "protein_g": 35.8,
+        "fat_g": 25.8,
+        "fiber_g": 0.0,
+        "calories": 392
+    },
+    "pea": {
+        "carbs_g": 14.5,
+        "protein_g": 5.4,
+        "fat_g": 0.4,
+        "fiber_g": 5.7,
+        "calories": 81
+    },
+    "peanut": {
+        "carbs_g": 16.1,
+        "protein_g": 25.8,
+        "fat_g": 49.2,
+        "fiber_g": 8.5,
+        "calories": 567
+    },
+    "pistachio": {
+        "carbs_g": 27.2,
+        "protein_g": 20.2,
+        "fat_g": 45.3,
+        "fiber_g": 10.6,
+        "calories": 560
+    },
+    "pomegranate": {
+        "carbs_g": 18.7,
+        "protein_g": 1.7,
+        "fat_g": 1.2,
+        "fiber_g": 4.0,
+        "calories": 83
+    },
+    "radish": {
+        "carbs_g": 3.4,
+        "protein_g": 0.7,
+        "fat_g": 0.1,
+        "fiber_g": 1.6,
+        "calories": 16
+    },
+    "raisin": {
+        "carbs_g": 79.2,
+        "protein_g": 3.1,
+        "fat_g": 0.5,
+        "fiber_g": 3.7,
+        "calories": 299
+    },
+    "ricotta": {
+        "carbs_g": 3.0,
+        "protein_g": 11.3,
+        "fat_g": 13.0,
+        "fiber_g": 0.0,
+        "calories": 174
+    },
+    "sardine": {
+        "carbs_g": 0.0,
+        "protein_g": 24.6,
+        "fat_g": 11.5,
+        "fiber_g": 0.0,
+        "calories": 208
+    },
+    "sausage": {
+        "carbs_g": 2.4,
+        "protein_g": 14.0,
+        "fat_g": 27.0,
+        "fiber_g": 0.0,
+        "calories": 301
+    },
+    "scallion": {
+        "carbs_g": 7.3,
+        "protein_g": 1.8,
+        "fat_g": 0.2,
+        "fiber_g": 2.6,
+        "calories": 32
+    },
+    "sour cream": {
+        "carbs_g": 2.9,
+        "protein_g": 2.1,
+        "fat_g": 20.0,
+        "fiber_g": 0.0,
+        "calories": 198
+    },
+    "soy milk": {
+        "carbs_g": 6.3,
+        "protein_g": 3.3,
+        "fat_g": 1.8,
+        "fiber_g": 0.6,
+        "calories": 54
+    },
+    "sunflower seed": {
+        "carbs_g": 20.0,
+        "protein_g": 20.8,
+        "fat_g": 51.5,
+        "fiber_g": 8.6,
+        "calories": 584
+    },
+    "tahini": {
+        "carbs_g": 21.2,
+        "protein_g": 17.0,
+        "fat_g": 53.8,
+        "fiber_g": 9.3,
+        "calories": 595
+    },
+    "tilapia": {
+        "carbs_g": 0.0,
+        "protein_g": 26.2,
+        "fat_g": 2.7,
+        "fiber_g": 0.0,
+        "calories": 128
+    },
+    "turnip": {
+        "carbs_g": 6.4,
+        "protein_g": 0.9,
+        "fat_g": 0.1,
+        "fiber_g": 1.8,
+        "calories": 28
+    }
+}
