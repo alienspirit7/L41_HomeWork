@@ -205,7 +205,14 @@ async function analyseMeal() {
             throw new Error(data.error || 'Analysis failed');
         }
 
-        renderResults(data);
+        // Attach preview URLs to results for display
+        const previewUrls = dishIds.map(id => {
+            const files = dishData[id].files;
+            return files.length > 0
+                ? URL.createObjectURL(files[0])
+                : null;
+        });
+        renderResults(data, previewUrls);
 
         // Hide setup section, show restart button
         document.getElementById('setupSection').classList.add('hidden');
@@ -219,12 +226,19 @@ async function analyseMeal() {
 }
 
 /* ── Render Results ───────────────────────────────── */
-function renderResults(data) {
+function renderResults(data, previewUrls) {
     const container = document.getElementById('results');
 
-    const dishesHtml = data.dishes.map((dish) => `
+    const dishesHtml = data.dishes.map((dish, i) => {
+        const thumbSrc = previewUrls && previewUrls[i]
+            ? previewUrls[i] : '';
+        const thumbHtml = thumbSrc
+            ? `<img class="dish-result-thumb" src="${thumbSrc}" alt="">`
+            : '';
+        return `
         <div class="dish-result">
             <div class="dish-result-header">
+                ${thumbHtml}
                 <span class="dish-result-name">${dish.name}</span>
                 <span class="dish-result-images">
                     ${dish.num_images} image${dish.num_images > 1 ? 's' : ''}
@@ -249,7 +263,9 @@ function renderResults(data) {
                 </div>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
+
 
     const t = data.totals;
     const b = data.bolus_recommendation;

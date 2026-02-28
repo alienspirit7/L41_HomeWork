@@ -423,6 +423,15 @@ body::before {
     color: var(--text-muted);
 }
 
+.dish-result-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
 .macro-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);

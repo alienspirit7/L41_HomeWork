@@ -20,7 +20,6 @@ except ImportError:
     pass
 
 from src.inference import predict_meal
-from src.food_classifier import predict_food_name
 from src.effective_carbs import bolus_recommendation_from_config
 
 meal_bp = Blueprint("meal", __name__)
@@ -40,25 +39,101 @@ def init_meal_blueprint(cfg: dict, checkpoint: str):
 
 
 def _save_upload(f) -> str:
-    """Save an uploaded file as a clean PNG temp file.
+    """Save an uploaded file as a clean PNG temp file."""
+    import subprocess
 
-    Reads raw bytes from the upload stream, opens with PIL
-    (handles JPEG, PNG, HEIC, etc.), converts to RGB, and saves
-    as PNG.  Returns the path to the temp PNG file.
-    """
-    f.stream.seek(0)
-    raw = f.stream.read()
+    print(f"[UPLOAD] filename={f.filename}, "
+          f"content_type={f.content_type}, "
+          f"stream_type={type(f.stream).__name__}")
 
-    if not raw:
+    # Preserve original extension
+    ext = ".jpg"
+    if f.filename and "." in f.filename:
+        ext = "." + f.filename.rsplit(".", 1)[-1].lower()
+
+    # Step 1: save raw upload to disk
+    fd, raw_path = tempfile.mkstemp(suffix=ext)
+    os.close(fd)
+    f.save(raw_path)
+
+    file_size = os.path.getsize(raw_path)
+    with open(raw_path, "rb") as fh:
+        header = fh.read(16)
+    print(f"[STEP1] saved to {raw_path}, "
+          f"size={file_size}, "
+          f"magic={header[:8].hex()}")
+
+    # Fix: strip stray bytes before image signature
+    # (Flask multipart parser can leak CRLF into file data)
+    SIGNATURES = [
+        b"\xff\xd8\xff",       # JPEG
+        b"\x89PNG",            # PNG
+        b"\x00\x00\x00",       # HEIC/HEIF (ftyp box)
+        b"RIFF",               # WebP
+        b"GIF8",               # GIF
+        b"BM",                 # BMP
+    ]
+    offset = 0
+    for sig in SIGNATURES:
+        pos = header.find(sig)
+        if pos > 0:
+            offset = pos
+            break
+
+    if offset > 0:
+        print(f"[FIX] stripping {offset} leading bytes")
+        with open(raw_path, "rb") as fh:
+            data = fh.read()
+        with open(raw_path, "wb") as fh:
+            fh.write(data[offset:])
+        file_size = os.path.getsize(raw_path)
+
+    if file_size == 0:
+        os.unlink(raw_path)
         raise ValueError(f"Empty upload: {f.filename}")
 
-    buf = io.BytesIO(raw)
-    img = PILImage.open(buf).convert("RGB")
+    # Step 2: try opening with PIL
+    try:
+        print(f"[STEP2] trying PIL.open({raw_path})...")
+        img = PILImage.open(raw_path).convert("RGB")
+        print(f"[STEP2] PIL OK: {img.size}")
+    except Exception as e:
+        print(f"[STEP2] PIL failed: {e}")
+        # Step 3: fallback — macOS sips
+        sips_out = raw_path + ".png"
+        print(f"[STEP3] trying sips → {sips_out}")
+        result = subprocess.run(
+            ["sips", "-s", "format", "png", raw_path,
+             "--out", sips_out],
+            capture_output=True, text=True,
+        )
+        print(f"[STEP3] sips rc={result.returncode}, "
+              f"stderr={result.stderr.strip()}")
+        os.unlink(raw_path)
+        if result.returncode != 0:
+            raise ValueError(
+                f"Cannot process '{f.filename}': "
+                f"{result.stderr.strip()}"
+            )
+        raw_path = sips_out
+        img = PILImage.open(raw_path).convert("RGB")
+        print(f"[STEP3] PIL after sips OK: {img.size}")
 
-    fd, path = tempfile.mkstemp(suffix=".png")
-    os.close(fd)
+    # Save as clean PNG
+    fd2, path = tempfile.mkstemp(suffix=".png")
+    os.close(fd2)
     img.save(path, format="PNG")
     img.close()
+    print(f"[DONE] saved PNG: {path}, "
+          f"size={os.path.getsize(path)}")
+
+    # Clean up
+    if os.path.exists(raw_path) and raw_path != path:
+        try:
+            os.unlink(raw_path)
+        except OSError:
+            pass
+
     return path
 
 
@@ -106,16 +181,7 @@ def analyse_meal():
                 temp_paths, _cfg, checkpoint=ckpt,
             )
             prediction.pop("bolus_recommendation", None)
-
-            # Auto-predict dish name if user didn't provide one
-            name = dish["name"]
-            if not name or name.startswith("Dish "):
-                try:
-                    name = predict_food_name(temp_paths[0], _cfg)
-                except Exception:
-                    name = dish["name"]
-
-            prediction["name"] = name
+            prediction["name"] = dish["name"]
             prediction["num_images"] = len(temp_paths)
             results.append(prediction)
 
