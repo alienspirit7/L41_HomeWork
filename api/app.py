@@ -2,16 +2,19 @@
 Flask API for Food Macro Estimation.
 
 Endpoints:
-  GET  /health                → service health check
-  POST /predict_meal_macros   → predict macros from images
-  POST /effective_carbs       → recalculate effective carbs
+  GET  /                        → web UI
+  GET  /health                  → service health check
+  POST /predict_meal_macros     → predict macros from images
+  POST /effective_carbs         → recalculate effective carbs
+  POST /api/analyse_meal        → multi-dish meal analysis
 """
 
 import io
 import sys
 import os
 import tempfile
-from flask import Flask, request, jsonify
+from pathlib import Path
+from flask import Flask, request, jsonify, send_from_directory
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -19,6 +22,9 @@ from src.config import load_config
 from src.inference import predict_meal
 from src.effective_carbs import compute_effective_carbs
 from api.schemas import PredictionResponse, HealthResponse
+from api.meal_router import meal_bp, init_meal_blueprint
+
+UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
 
 def create_app(config_path: str = "configs/default.yaml"):
@@ -26,6 +32,24 @@ def create_app(config_path: str = "configs/default.yaml"):
     app = Flask(__name__)
     cfg = load_config(config_path)
     checkpoint = cfg.get("checkpoint_dir", "models") + "/best.pt"
+
+    # Register multi-dish blueprint
+    init_meal_blueprint(cfg, checkpoint)
+    app.register_blueprint(meal_bp)
+
+    @app.errorhandler(Exception)
+    def handle_error(e):
+        """Return JSON errors instead of HTML debug pages."""
+        code = getattr(e, "code", 500)
+        return jsonify({"error": str(e)}), code
+
+    @app.route("/")
+    def index():
+        return send_from_directory(str(UI_DIR), "index.html")
+
+    @app.route("/ui/<path:filename>")
+    def serve_ui(filename):
+        return send_from_directory(str(UI_DIR), filename)
 
     @app.route("/health", methods=["GET"])
     def health():
@@ -48,11 +72,11 @@ def create_app(config_path: str = "configs/default.yaml"):
         temp_paths = []
         try:
             for f in files:
-                tmp = tempfile.NamedTemporaryFile(
-                    suffix=".jpg", delete=False,
-                )
-                f.save(tmp.name)
-                temp_paths.append(tmp.name)
+                ext = f.filename.rsplit(".", 1)[-1].lower()
+                fd, path = tempfile.mkstemp(suffix=f".{ext}")
+                with os.fdopen(fd, "wb") as out:
+                    out.write(f.read())
+                temp_paths.append(path)
 
             ckpt = checkpoint if os.path.exists(checkpoint) else None
             result = predict_meal(temp_paths, cfg, checkpoint=ckpt)

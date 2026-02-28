@@ -26,18 +26,20 @@ fi
 
 # ── Download metadata CSVs ────────────────────────────────────
 echo "=== Downloading metadata CSVs ==="
-gsutil -m cp -r "${BUCKET}/metadata/*" "$DATA_DIR/metadata/"
+gsutil -m rsync -r "${BUCKET}/metadata/" "$DATA_DIR/metadata/"
 echo "Metadata downloaded."
 
 # ── Download dish ID splits ───────────────────────────────────
 echo "=== Downloading train/test splits ==="
-gsutil -m cp -r "${BUCKET}/dish_ids/" "$DATA_DIR/dish_ids/"
+mkdir -p "$DATA_DIR/dish_ids"
+gsutil -m rsync -r "${BUCKET}/dish_ids/" "$DATA_DIR/dish_ids/"
 echo "Splits downloaded."
 
 # ── Download overhead RGB images ──────────────────────────────
 echo "=== Downloading overhead RGB images ==="
 echo "This may take a while (~5-10 GB)..."
-gsutil -m cp -r "${BUCKET}/imagery/realsense_overhead/" \
+mkdir -p "$DATA_DIR/imagery/realsense_overhead"
+gsutil -m rsync -r "${BUCKET}/imagery/realsense_overhead/" \
     "$DATA_DIR/imagery/realsense_overhead/"
 echo "Images downloaded."
 

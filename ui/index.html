@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meal Analyser — Macro Estimation &amp; Bolus Recommendation</title>
+    <meta name="description"
+        content="Upload meal photos to estimate macros and get insulin pump combo bolus recommendations using the Warsaw Method.">
+    <link rel="stylesheet" href="/ui/styles.css">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽️</text></svg>">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🍽️ Meal Analyser</h1>
+            <p>Upload photos of your dishes to estimate macros and get a combo bolus recommendation</p>
+        </header>
+
+        <!-- Error Message -->
+        <div class="error-message" id="errorMsg"></div>
+
+        <!-- Setup Section (dishes + buttons) -->
+        <div id="setupSection">
+            <div class="dishes-container" id="dishesContainer"></div>
+            <div class="actions">
+                <button class="btn btn-secondary" id="addDishBtn">
+                    + Add Dish
+                </button>
+                <button class="btn btn-primary" id="analyseBtn" disabled>
+                    Analyse Meal
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Analysing your meal…</p>
+        </div>
+
+        <!-- Results -->
+        <div class="results" id="results">
+            <div class="results-header">
+                <h2>📊 Analysis Results</h2>
+            </div>
+            <div id="dishResults"></div>
+            <div id="mealTotals"></div>
+        </div>
+
+        <!-- New Analysis Button (shown after results) -->
+        <button class="btn btn-primary new-analysis-btn hidden" id="newAnalysisBtn">
+            🔄 New Analysis
+        </button>
+    </div>
+
+    <script src="/ui/app.js"></script>
+</body>
+
+</html>

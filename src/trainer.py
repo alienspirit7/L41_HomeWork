@@ -1,9 +1,10 @@
 """
 Trainer — training loop with two-phase schedule, validation,
-early stopping, and checkpointing.
+early stopping, cosine LR scheduling, and checkpointing.
 """
 
 import torch
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from pathlib import Path
 from src.losses import MultiTaskLoss
 from src.metrics import mae, TARGET_NAMES
@@ -35,6 +36,15 @@ class Trainer:
                 weight_decay=self.cfg["weight_decay"],
             )
         return torch.optim.Adam(params, lr=lr)
+
+    def _build_scheduler(self, optimizer, epochs: int):
+        """Build LR scheduler if configured."""
+        sched_type = self.cfg.get("scheduler", "none")
+        if sched_type == "cosine":
+            return CosineAnnealingLR(
+                optimizer, T_max=epochs, eta_min=1e-6,
+            )
+        return None
 
     def train_epoch(self, loader, optimizer) -> float:
         """Run one training epoch. Returns average loss."""
@@ -86,34 +96,45 @@ class Trainer:
         path = self.ckpt_dir / name
         torch.save(self.model.state_dict(), path)
 
+    def _run_phase(self, phase, loader_train, loader_val,
+                   epochs, label):
+        """Run a training phase with scheduler + early stopping."""
+        opt = self._build_optimizer(phase)
+        sched = self._build_scheduler(opt, epochs)
+
+        for epoch in range(epochs):
+            loss = self.train_epoch(loader_train, opt)
+            metrics = self.validate(loader_val)
+            carb_mae = metrics.get("val_carbs_g_mae", 0)
+
+            lr_now = opt.param_groups[0]["lr"]
+            print(f"  Epoch {epoch+1}/{epochs}  "
+                  f"loss={loss:.4f}  carb_mae={carb_mae:.2f}  "
+                  f"lr={lr_now:.2e}")
+
+            if sched:
+                sched.step()
+
+            if self._check_early_stop(metrics):
+                print("  Early stopping triggered.")
+                break
+
     def fit(self, train_loader, val_loader) -> None:
         """Full two-phase training loop."""
         # Phase 1: frozen backbone
         print("=== Phase 1: Training head (backbone frozen) ===")
-        opt = self._build_optimizer("frozen")
-        for epoch in range(self.cfg["epochs_frozen"]):
-            loss = self.train_epoch(train_loader, opt)
-            metrics = self.validate(val_loader)
-            carb_mae = metrics.get("val_carbs_g_mae", 0)
-            print(f"  Epoch {epoch+1}/{self.cfg['epochs_frozen']}  "
-                  f"loss={loss:.4f}  carb_mae={carb_mae:.2f}")
-            if self._check_early_stop(metrics):
-                print("  Early stopping triggered.")
-                break
+        self._run_phase(
+            "frozen", train_loader, val_loader,
+            self.cfg["epochs_frozen"], "frozen",
+        )
 
         # Phase 2: unfreeze top-N layers
         print("=== Phase 2: Fine-tuning backbone top layers ===")
         self.model.unfreeze_backbone(self.cfg["unfreeze_top_n"])
         self.patience_counter = 0
-        opt = self._build_optimizer("finetune")
-        for epoch in range(self.cfg["epochs_finetune"]):
-            loss = self.train_epoch(train_loader, opt)
-            metrics = self.validate(val_loader)
-            carb_mae = metrics.get("val_carbs_g_mae", 0)
-            print(f"  Epoch {epoch+1}/{self.cfg['epochs_finetune']}  "
-                  f"loss={loss:.4f}  carb_mae={carb_mae:.2f}")
-            if self._check_early_stop(metrics):
-                print("  Early stopping triggered.")
-                break
+        self._run_phase(
+            "finetune", train_loader, val_loader,
+            self.cfg["epochs_finetune"], "finetune",
+        )
 
         print("Training complete. Best checkpoint saved.")

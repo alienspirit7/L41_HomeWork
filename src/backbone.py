@@ -9,6 +9,7 @@ import timm
 
 SUPPORTED = {
     "efficientnet_b0", "efficientnet_b1",
+    "efficientnet_b2", "efficientnet_b3",
     "resnet50", "resnet34",
     "mobilenetv2_100", "mobilenetv3_large_100",
 }

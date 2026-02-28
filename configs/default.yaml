@@ -3,22 +3,21 @@
 # ──────────────────────────────────────────────────────────────
 
 # ── Backbone ──────────────────────────────────────────────────
-backbone: efficientnet_b0        # timm model name
+backbone: efficientnet_b2        # timm model name (b2 for better features)
 pretrained: true
 freeze_backbone: true            # Phase 1: train head only
-unfreeze_top_n: 3                # Phase 2: unfreeze last N blocks
+unfreeze_top_n: 4                # Phase 2: unfreeze last N blocks
 
 # ── Image ─────────────────────────────────────────────────────
-image_size: 224
+image_size: 260                  # B2 native resolution
 image_mean: [0.485, 0.456, 0.406]   # ImageNet defaults
 image_std:  [0.229, 0.224, 0.225]
 
 # ── Data ──────────────────────────────────────────────────────
-# For full dataset: data/nutrition5k/processed.csv
-data_csv: data/sample/metadata.csv
-data_root: data                    # prepended to image_path
+data_csv: data/nutrition5k/processed.csv
+data_root: data/nutrition5k        # prepended to image_path
 batch_size: 32
-num_workers: 0                     # 0 for macOS compatibility
+num_workers: 4
 val_split: 0.15
 test_split: 0.10
 
@@ -28,28 +27,35 @@ target_mean: null    # [weight, carbs, protein, fat]
 target_std:  null
 
 # ── Training ──────────────────────────────────────────────────
-epochs_frozen: 2        # epochs with frozen backbone (10 for full)
-epochs_finetune: 3      # epochs with unfrozen top-N (20 for full)
+epochs_frozen: 10       # epochs with frozen backbone
+epochs_finetune: 30     # epochs with unfrozen top-N
 lr_head: 1.0e-3
 lr_backbone: 1.0e-4
-weight_decay: 1.0e-4
+weight_decay: 5.0e-4                # stronger regularisation
+scheduler: cosine                   # cosine | none
 optimizer: adamw         # adam | adamw
 
 # ── Loss weights (λ) ─────────────────────────────────────────
 loss_type: smooth_l1     # smooth_l1 | mse
-lambda_weight: 1.0
+lambda_weight: 2.0               # boosted to improve weight estimation
 lambda_carbs:  2.0       # carbs are highest priority
 lambda_protein: 1.0
 lambda_fat: 1.0
 
-# ── Effective carbs formula ───────────────────────────────────
-# effective_carbs = carbs + alpha * protein + beta * fat
-effective_carbs_alpha: 0.5
-effective_carbs_beta:  0.1
+# ── Effective carbs / Warsaw Method ───────────────────────────
+# Method: 'linear' (simple alpha/beta) or 'warsaw' (FPU-based)
+effective_carbs_method: warsaw
+effective_carbs_alpha: 0.5       # only used in linear method
+effective_carbs_beta:  0.1       # only used in linear method
+
+# Warsaw Method parameters
+icr: 10.0                        # Insulin-to-Carb Ratio (1u per Ng)
+fpu_to_carb_ratio: 10.0          # 1 FPU = 10g carbs (adjust to 7 or 5)
+activity_reduction: false        # if true, halve EC for post-meal activity
 
 # ── Early stopping ────────────────────────────────────────────
 early_stopping_patience: 7
-early_stopping_metric: val_carbs_mae   # monitor carb MAE
+early_stopping_metric: val_carbs_g_mae   # must match trainer keys
 
 # ── Checkpoints ───────────────────────────────────────────────
 checkpoint_dir: models
@@ -57,3 +63,4 @@ save_best_only: true
 
 # ── Inference ─────────────────────────────────────────────────
 multi_image_strategy: mean   # mean | max — how to aggregate
+tta: true                    # test-time augmentation (5 views)

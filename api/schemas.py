@@ -13,6 +13,7 @@ class PredictionResponse:
     protein_g: float = 0.0
     fat_g: float = 0.0
     effective_carbs_g: float = 0.0
+    bolus_recommendation: dict = field(default_factory=dict)
     num_images: int = 0
     confidence: str = "normal"
     warnings: list[str] = field(default_factory=list)

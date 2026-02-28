@@ -67,8 +67,12 @@ def main():
     # Re-save best checkpoint with target stats included
     import torch
     ckpt_path = f"{cfg['checkpoint_dir']}/best.pt"
-    state_dict = torch.load(ckpt_path, map_location="cpu",
-                            weights_only=True)
+    if os.path.exists(ckpt_path):
+        state_dict = torch.load(ckpt_path, map_location="cpu",
+                                weights_only=True)
+    else:
+        # Fallback: save current model state if no best.pt yet
+        state_dict = model.state_dict()
     torch.save({
         "model_state_dict": state_dict,
         "target_mean": t_mean.tolist(),

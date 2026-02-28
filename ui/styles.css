@@ -1,0 +1,661 @@
+/* ── Design System ─────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+    --bg-primary: #0f0f1a;
+    --bg-secondary: #1a1a2e;
+    --bg-card: rgba(30, 30, 55, 0.7);
+    --bg-card-hover: rgba(40, 40, 70, 0.8);
+    --border: rgba(255, 255, 255, 0.08);
+    --border-active: rgba(99, 102, 241, 0.5);
+    --text-primary: #e4e4f0;
+    --text-secondary: #9ca3b0;
+    --text-muted: #6b7280;
+    --accent: #6366f1;
+    --accent-light: #818cf8;
+    --accent-glow: rgba(99, 102, 241, 0.25);
+    --success: #34d399;
+    --success-bg: rgba(52, 211, 153, 0.1);
+    --warning: #fbbf24;
+    --warning-bg: rgba(251, 191, 36, 0.1);
+    --danger: #f87171;
+    --gradient-1: linear-gradient(135deg, #6366f1, #8b5cf6);
+    --gradient-2: linear-gradient(135deg, #34d399, #06b6d4);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.5);
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --transition: 0.2s ease;
+}
+
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ── Background ───────────────────────────────────── */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(ellipse at 20% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.06) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* ── Layout ───────────────────────────────────────── */
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+    position: relative;
+    z-index: 1;
+}
+
+/* ── Header ───────────────────────────────────────── */
+.header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+}
+
+.header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    background: var(--gradient-1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.5rem;
+}
+
+.header p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+/* ── Dish Cards ───────────────────────────────────── */
+.dishes-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.dish-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    backdrop-filter: blur(20px);
+    transition: border-color var(--transition), box-shadow var(--transition);
+    animation: slideIn 0.3s ease;
+}
+
+.dish-card:hover {
+    border-color: var(--border-active);
+    box-shadow: 0 0 20px var(--accent-glow);
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dish-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.dish-number {
+    width: 32px;
+    height: 32px;
+    background: var(--gradient-1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.dish-name-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.75rem;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    transition: border-color var(--transition);
+}
+
+.dish-name-input::placeholder {
+    color: var(--text-muted);
+}
+
+.dish-name-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.remove-dish-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.4rem;
+    border-radius: var(--radius-sm);
+    transition: color var(--transition), background var(--transition);
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+.remove-dish-btn:hover {
+    color: var(--danger);
+    background: rgba(248, 113, 113, 0.1);
+}
+
+/* ── Upload Area ──────────────────────────────────── */
+.upload-area {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.image-previews {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.image-preview {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.image-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.image-preview .remove-img {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 20px;
+    height: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    border: none;
+    border-radius: 50%;
+    color: white;
+    font-size: 0.7rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity var(--transition);
+}
+
+.image-preview:hover .remove-img {
+    opacity: 1;
+}
+
+.upload-btn {
+    width: 80px;
+    height: 80px;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    font-size: 0.65rem;
+    font-family: inherit;
+    transition: border-color var(--transition), color var(--transition);
+}
+
+.upload-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent-light);
+}
+
+.upload-btn .icon {
+    font-size: 1.5rem;
+}
+
+.upload-btn.disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.image-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+    width: 100%;
+}
+
+/* ── Action Buttons ───────────────────────────────── */
+.actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.btn-primary {
+    flex: 1;
+    background: var(--gradient-1);
+    color: white;
+    box-shadow: 0 4px 15px var(--accent-glow);
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 25px var(--accent-glow);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+/* ── Loading ──────────────────────────────────────── */
+.loading {
+    display: none;
+    text-align: center;
+    padding: 2rem;
+}
+
+.loading.active {
+    display: block;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.loading p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* ── Results ──────────────────────────────────────── */
+.results {
+    display: none;
+    animation: fadeIn 0.4s ease;
+}
+
+.results.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.results-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.results-header h2 {
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+/* ── Dish Result Cards ────────────────────────────── */
+.dish-result {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.dish-result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+}
+
+.dish-result-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.dish-result-images {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.macro-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+}
+
+.macro-item {
+    text-align: center;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-sm);
+}
+
+.macro-value {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.macro-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.15rem;
+}
+
+/* ── Totals Card ──────────────────────────────────── */
+.totals-card {
+    background: var(--bg-card);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    margin: 1.5rem 0;
+    box-shadow: 0 0 30px var(--accent-glow);
+}
+
+.totals-card h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent-light);
+    margin-bottom: 1rem;
+}
+
+.totals-macro-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.totals-macro-item {
+    text-align: center;
+    padding: 0.75rem;
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: var(--radius-sm);
+}
+
+.totals-macro-value {
+    font-weight: 700;
+    font-size: 1.4rem;
+    color: white;
+}
+
+.fpu-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+
+.fpu-item {
+    text-align: center;
+}
+
+.fpu-value {
+    font-weight: 700;
+    font-size: 1.2rem;
+    background: var(--gradient-2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* ── Bolus Card ───────────────────────────────────── */
+.bolus-card {
+    background: linear-gradient(135deg, rgba(52, 211, 153, 0.08), rgba(6, 182, 212, 0.08));
+    border: 1px solid rgba(52, 211, 153, 0.3);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.bolus-card h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.bolus-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.bolus-section {
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.bolus-section-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+}
+
+.bolus-units {
+    font-size: 2rem;
+    font-weight: 700;
+    color: white;
+}
+
+.bolus-units span {
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
+.bolus-detail {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+.bolus-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background: rgba(52, 211, 153, 0.1);
+    border-radius: var(--radius-md);
+    margin-bottom: 1rem;
+}
+
+.bolus-total-label {
+    font-weight: 600;
+    color: var(--success);
+}
+
+.bolus-total-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: white;
+}
+
+.bolus-disclaimer {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    padding: 0.75rem;
+    background: rgba(251, 191, 36, 0.05);
+    border: 1px solid rgba(251, 191, 36, 0.15);
+    border-radius: var(--radius-sm);
+    line-height: 1.5;
+}
+
+/* ── Utility ──────────────────────────────────────── */
+.hidden {
+    display: none !important;
+}
+
+/* ── New Analysis Button ──────────────────────────── */
+.new-analysis-btn {
+    width: 100%;
+    margin-top: 2rem;
+    padding: 1rem;
+    font-size: 1rem;
+    animation: fadeIn 0.4s ease;
+}
+
+/* ── Error ────────────────────────────────────────── */
+.error-message {
+    display: none;
+    padding: 1rem;
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.3);
+    border-radius: var(--radius-md);
+    color: var(--danger);
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.error-message.active {
+    display: block;
+}
+
+/* ── Responsive ───────────────────────────────────── */
+@media (max-width: 600px) {
+    .container {
+        padding: 1rem;
+    }
+
+    .header h1 {
+        font-size: 1.5rem;
+    }
+
+    .macro-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .totals-macro-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .fpu-row {
+        grid-template-columns: 1fr;
+    }
+
+    .bolus-split {
+        grid-template-columns: 1fr;
+    }
+
+    .actions {
+        flex-direction: column;
+    }
+}

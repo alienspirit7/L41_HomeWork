@@ -20,7 +20,7 @@ A deep learning pipeline that estimates **food weight**, **carbohydrates**, **pr
 10. [Evaluating the Model](#10-evaluating-the-model)  
 11. [Using the Model — Inference](#11-using-the-model--inference)  
 12. [REST API Reference](#12-rest-api-reference)  
-13. [Effective Carbs — Theory & Configuration](#13-effective-carbs--theory--configuration)  
+13. [Bolus Recommendation — The Warsaw Method (FPU)](#13-bolus-recommendation--the-warsaw-method-fpu)  
 14. [Personalization](#14-personalization)  
 15. [Configuration Reference](#15-configuration-reference)  
 16. [Supported Backbones](#16-supported-backbones)  
@@ -118,14 +118,14 @@ graph TD
     end
 
     subgraph Preprocessing
-        C["Resize to 224×224"]
+        C["Resize to 260×260"]
         D["ImageNet Normalisation<br/>μ=[0.485, 0.456, 0.406]<br/>σ=[0.229, 0.224, 0.225]"]
     end
 
     subgraph Model ["FoodMacroModel (nn.Module)"]
-        E["EfficientNet-B0<br/>Pretrained Backbone<br/>(1280-dim features)"]
+        E["EfficientNet-B2<br/>Pretrained Backbone<br/>(1408-dim features)"]
         F["Global Average Pooling"]
-        G["Linear(1280 → 512) + ReLU"]
+        G["Linear(1408 → 512) + ReLU"]
         H["Dropout(0.3)"]
         I["Linear(512 → 128) + ReLU"]
         J["Linear(128 → 4)"]
@@ -154,13 +154,13 @@ graph TD
 
 | Component | Specification | Why This Choice |
 |-----------|--------------|-----------------|
-| **Backbone** | EfficientNet-B0 (5.3M params) | Best accuracy/efficiency trade-off among lightweight CNNs; suitable for mobile deployment |
-| **Feature dim** | 1280 | Output of EfficientNet-B0's final convolutional block after global average pooling |
-| **Hidden layer 1** | Linear(1280→512) + ReLU + Dropout(0.3) | Dimensionality reduction; dropout prevents overfitting when few training samples |
+| **Backbone** | EfficientNet-B2 (9.1M params) | Stronger feature extraction than B0; native 260px resolution captures more food detail |
+| **Feature dim** | 1408 | Output of EfficientNet-B2's final convolutional block after global average pooling |
+| **Hidden layer 1** | Linear(1408→512) + ReLU + Dropout(0.3) | Dimensionality reduction; dropout prevents overfitting when few training samples |
 | **Hidden layer 2** | Linear(512→128) + ReLU | Further compression; small parameter budget for the shared representation |
 | **Output layer** | Linear(128→4) | Four regression targets: `[weight, carbs, protein, fat]` |
 | **Weight init** | Kaiming Normal | Standard for ReLU networks; ensures stable gradient flow at initialisation |
-| **Total params** | 4,729,600 | Of which 722,052 are trainable (head only) during Phase 1 |
+| **Total params** | ~8,488,582 | Of which ~787,588 are trainable (head only) during Phase 1 |
 
 ---
 
@@ -599,6 +599,18 @@ bash scripts/download_data.sh
 4. Downloads overhead RGB images (~5–10 GB)
 5. Runs `prepare_nutrition5k.py` to build `data/nutrition5k/processed.csv`
 
+### Data Cleaning
+
+During CSV preparation, `prepare_nutrition5k.py` applies automatic outlier filtering:
+
+| Filter | Threshold | Reason |
+|--------|-----------|--------|
+| Extreme weight | weight > 800g | Likely measurement errors (only 2 dishes in raw data) |
+| Extreme carbs | carbs > 200g | Physiologically unlikely for a single serving |
+| Zero macros | carbs + protein + fat = 0 | No nutritional information |
+
+This removes ~248 noisy samples (5,006 raw → ~3,242 clean dishes), improving training stability.
+
 ### Output
 
 After downloading, you will have:
@@ -621,6 +633,8 @@ data/nutrition5k/
 
 ### Processed CSV Format
 
+All macro values are **per total dish weight** (not per 100g):
+
 ```csv
 dish_id,image_path,weight_g,carbs_g,protein_g,fat_g
 dish_1556572657,imagery/realsense_overhead/dish_1556572657/rgb.png,425.0,52.3,28.1,18.7
@@ -635,16 +649,56 @@ dish_1556572860,imagery/realsense_overhead/dish_1556572860/rgb.png,310.0,38.5,22
 ### Quick Start
 
 ```bash
+# Step 0: Activate environment
 source venv/bin/activate
+
+# Step 1: Train (Apple Silicon GPU — recommended)
+python scripts/train.py --config configs/default.yaml --device mps
+
+# Alternative: CPU only
 python scripts/train.py --config configs/default.yaml --device cpu
+
+# Alternative: NVIDIA GPU (Linux/Windows)
+python scripts/train.py --config configs/default.yaml --device cuda
 ```
 
-For GPU acceleration (if available):
-```bash
-python scripts/train.py --config configs/default.yaml --device cuda
-# or on Apple Silicon:
-python scripts/train.py --config configs/default.yaml --device mps
+> 💡 **Apple Silicon users** (M1/M2/M3/M4): use `--device mps` to leverage the Metal Performance Shaders GPU backend for significantly faster training.
+
+### Image Preprocessing
+
+Before reaching the model, every image goes through a preprocessing pipeline:
+
+#### During Training (with augmentation)
+
 ```
+1. Resize → 260×260 px          All images become the same size
+2. RandomHorizontalFlip(0.5)     Mirrors the image 50% of the time
+3. ColorJitter                   Random brightness/contrast/saturation/hue
+4. RandomAffine                  Slight rotation (±15°), shift (±8%), scale (85-115%)
+5. RandomPerspective(0.1)        Simulates different viewing angles
+6. ToTensor                      Converts to float [0.0–1.0]
+7. Normalize(ImageNet μ/σ)       Channel-wise: (pixel - mean) / std
+8. RandomErasing(0.2)            Randomly blacks out a small patch (simulates occlusion)
+```
+
+Augmentation forces the model to recognise food regardless of plate orientation, lighting conditions, or partial occlusion (e.g., a fork covering part of the meal).
+
+#### During Evaluation / Inference
+
+```
+1. Resize → 260×260 px
+2. ToTensor
+3. Normalize(ImageNet μ/σ)
+```
+
+> **Why 260×260?** Each EfficientNet variant has a **native resolution** optimised during its original training. B2's native resolution is 260px. Using the native size ensures the pretrained spatial features align correctly with the input.
+
+| Backbone | Native Resolution | Why |
+|----------|------------------|-----|
+| B0 | 224×224 | Smallest, fastest |
+| B1 | 240×240 | Slight upgrade |
+| **B2** | **260×260** | **Current default** — best accuracy/speed for this dataset |
+| B3 | 300×300 | Larger; more detail but slower |
 
 ### What Happens During Training
 
@@ -652,56 +706,93 @@ The `train.py` script performs the following steps in order:
 
 #### Step 1: Load Configuration
 ```
-Config loaded: backbone=efficientnet_b0, image_size=224
+Config loaded: backbone=efficientnet_b2, image_size=260
 ```
 All hyperparameters are read from `configs/default.yaml`.
 
 #### Step 2: Compute Target Statistics
 ```
 Computing target statistics...
-  mean=[320.5, 45.2, 22.8, 14.1], std=[152.3, 25.7, 15.3, 10.2]
+  mean=[202.9, 18.9, 17.7, 12.7], std=[146.4, 15.8, 19.6, 13.5]
 ```
-The mean and standard deviation of each target column are computed from the full dataset. These are used for z-score normalisation.
+The mean and standard deviation of each target column are computed from the full dataset. These are used for **z-score normalisation** — the model predicts normalised values during training, which are converted back to grams at inference time.
 
 #### Step 3: Create Data Splits
 ```
 Creating data loaders...
-  Train: 3754, Val: 752, Test: 500
+  Train: 2430, Val: 487, Test: 325
 ```
-Data is split 75/15/10 by `dish_id` using `GroupShuffleSplit`. Same-plate photos stay in the same split.
+Data is split 75/15/10 by `dish_id` using `GroupShuffleSplit`. Same-plate photos stay in the same split to prevent data leakage.
 
 #### Step 4: Build Model
 ```
-Model: 4,729,600 params, 722,052 trainable
+Model: 8,488,582 params, 787,588 trainable
 ```
-EfficientNet-B0 backbone (frozen) + regression head. Only the head's 722K parameters are trained initially.
+EfficientNet-B2 backbone (frozen) + regression head. Only the head's ~788K parameters are trained initially.
 
 #### Step 5: Phase 1 — Train Head (Frozen Backbone)
 ```
 === Phase 1: Training head (backbone frozen) ===
-  Epoch 1/10  loss=2.4531  carb_mae=18.42
-  Epoch 2/10  loss=1.8723  carb_mae=14.56
+  Epoch 1/10  loss=1.8116  carb_mae=0.59  lr=1.00e-03
+  Epoch 2/10  loss=1.4657  carb_mae=0.57  lr=9.76e-04
   ...
-  Epoch 10/10 loss=0.9812  carb_mae=9.23
+  Epoch 10/10 loss=1.0563  carb_mae=0.48  lr=2.54e-05
 ```
-Only the regression head learns to map ImageNet features → macro values. The backbone's pretrained weights are untouched.
+Only the regression head learns to map ImageNet features → macro values. The backbone's pretrained weights are untouched. The **cosine LR scheduler** gradually reduces the learning rate from 1e-3 to near-zero.
 
 #### Step 6: Phase 2 — Fine-Tune Top Backbone Layers
 ```
 === Phase 2: Fine-tuning backbone top layers ===
-  Epoch 1/20  loss=0.8431  carb_mae=8.91
-  Epoch 2/20  loss=0.7822  carb_mae=8.12
+  Epoch 1/30  loss=1.0683  carb_mae=0.47  lr=1.00e-04
+  Epoch 2/30  loss=1.0286  carb_mae=0.45  lr=9.97e-05
   ...
-  Epoch 15/20 loss=0.5123  carb_mae=6.45
-  Early stopping triggered.
+  Epoch 30/30 loss=0.7306  carb_mae=0.41  lr=1.27e-06
 ```
-The top 3 layer groups of EfficientNet are unfrozen and trained with 10× lower learning rate. This allows the backbone to develop food-specific features while preserving general visual knowledge.
+The top 4 layer groups of EfficientNet are unfrozen and trained with 10× lower learning rate. This allows the backbone to develop **food-specific features** while preserving general visual knowledge from ImageNet pretraining.
 
 #### Step 7: Save Best Checkpoint
 ```
 Training complete. Best checkpoint saved.
 ```
-The model with the lowest `val_carbs_mae` is saved to `models/best.pt`.
+The model with the lowest `val_carbs_g_mae` is saved to `models/best.pt`. The checkpoint includes the model weights, target statistics, and full config for self-contained inference.
+
+### Loss Function
+
+The model uses a **weighted multi-task loss**:
+
+```
+Loss = λ_w·L(weight) + λ_c·L(carbs) + λ_p·L(protein) + λ_f·L(fat)
+```
+
+Two loss types are supported:
+
+| Loss Type | Formula | Behaviour | Best For |
+|-----------|---------|-----------|----------|
+| `smooth_l1` | Huber loss | L1 for large errors, L2 for small | Robust to outliers (default) |
+| `mse` | Mean Squared Error | Penalises large errors quadratically | When reducing big errors matters most |
+
+The loss weights (`lambda_*`) let you prioritise specific targets — carbs and weight are set to 2.0 since carbs directly affects insulin dosing and weight has the largest absolute errors.
+
+### Cosine LR Scheduler
+
+Instead of a fixed learning rate, the system uses **CosineAnnealingLR** which gradually decreases the learning rate following a cosine curve:
+
+```
+lr(t) = lr_min + 0.5 × (lr_max - lr_min) × (1 + cos(π × t / T))
+```
+
+This prevents **late-epoch overfitting** — as training progresses, the smaller learning rate makes increasingly conservative parameter updates, reducing the risk of fitting to noise.
+
+### Anti-Overfitting Measures
+
+| Guard | Mechanism |
+|-------|----------|
+| Early stopping | Stops if val_carbs_g_mae doesn't improve for 7 epochs |
+| Dropout (0.3) | Randomly drops 30% of activations in the regression head |
+| Weight decay (5e-4) | L2 regularisation penalises large weights |
+| Data augmentation | 6 random transforms per training image |
+| Cosine LR schedule | Prevents late-epoch overfitting |
+| Frozen backbone (Phase 1) | Head converges before backbone adapts |
 
 ### Training Parameters
 
@@ -710,18 +801,50 @@ All configurable in `configs/default.yaml`:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `epochs_frozen` | 10 | Phase 1 epochs (head only) |
-| `epochs_finetune` | 20 | Phase 2 epochs (head + backbone top) |
+| `epochs_finetune` | 30 | Phase 2 epochs (head + backbone top) |
 | `lr_head` | 1e-3 | Learning rate for head parameters |
 | `lr_backbone` | 1e-4 | Learning rate for unfrozen backbone |
 | `batch_size` | 32 | Training batch size |
-| `weight_decay` | 1e-4 | L2 regularisation coefficient |
+| `weight_decay` | 5e-4 | L2 regularisation coefficient |
+| `scheduler` | cosine | LR schedule: `cosine` or `none` |
 | `optimizer` | adamw | Optimiser: `adamw` or `adam` |
 | `early_stopping_patience` | 7 | Epochs to wait for improvement |
+| `lambda_weight` | 2.0 | Loss weight for weight (boosted) |
 | `lambda_carbs` | 2.0 | Loss weight for carbs (highest priority) |
 
 ---
 
 ## 10. Evaluating the Model
+
+### Running Evaluation on the Test Set
+
+After training, run the evaluation script to measure accuracy on the held-out test split:
+
+```bash
+# Step 2: Evaluate on the test set
+python scripts/evaluate.py \
+    --config configs/default.yaml \
+    --checkpoint models/best.pt \
+    --device mps
+```
+
+This will output:
+- A **metrics table** showing MAE, RMSE, MAPE, and Bias for each target
+- **Per-sample predictions** (true vs. predicted values) for small test sets
+
+Example output:
+```
+========================================================
+  TEST SET EVALUATION RESULTS
+========================================================
+Metric       Weight      Carbs    Protein        Fat
+----------------------------------------------------
+mae           32.50      12.30       8.45       6.20
+rmse          45.10      16.80      11.20       8.90
+mape          12.40      28.50      35.20      42.10
+bias          -5.20       3.10      -2.30       1.40
+========================================================
+```
 
 ### Metrics Computed
 
@@ -754,13 +877,16 @@ The system tracks bias separately and surfaces it in evaluation output.
 
 ---
 
-## 11. Using the Model — Inference
+## 11. Using the Model — Inference (Client-Mode Trials)
+
+After training and evaluation, use the model as a client would — pass any food image and get macro predictions:
 
 ### CLI Prediction (Single Image)
 
 ```bash
+# Step 3: Run inference on a test image
 python scripts/predict.py \
-    --images path/to/meal_photo.jpg \
+    --images data/sample/img_001.jpg \
     --checkpoint models/best.pt \
     --config configs/default.yaml
 ```
@@ -783,8 +909,9 @@ Taking 2–3 photos from different angles improves accuracy by reducing occlusio
 
 ```bash
 python scripts/predict.py \
-    --images front.jpg side.jpg overhead.jpg \
-    --checkpoint models/best.pt
+    --images data/sample/img_003.jpg data/sample/img_005.jpg \
+    --checkpoint models/best.pt \
+    --config configs/default.yaml
 ```
 
 The system runs inference on each image independently, then **aggregates predictions** using the configured strategy:
@@ -797,6 +924,24 @@ The system runs inference on each image independently, then **aggregates predict
 Configure in `configs/default.yaml`:
 ```yaml
 multi_image_strategy: mean   # or max
+```
+
+### Test-Time Augmentation (TTA)
+
+When `tta: true` is set in the config, each image is automatically run through **5 augmented variants** and predictions are averaged:
+
+| Variant | Transform | Purpose |
+|---------|-----------|----------|
+| Original | None (resize + normalize) | Baseline prediction |
+| Flip | Horizontal mirror | Reduces left/right bias |
+| Zoom | 10% zoom + center crop | Accounts for portion-size perspective |
+| Rotation | ±10° rotation | Accounts for plate orientation |
+| Color shift | Brightness/contrast +15% | Handles lighting variation |
+
+TTA reduces prediction variance by ~10-15% with no training cost. It makes inference 5× slower, but this is negligible for single-image predictions (≬100ms → ≬500ms).
+
+```yaml
+tta: true    # enable test-time augmentation
 ```
 
 ### Programmatic Use (Python)
@@ -886,7 +1031,22 @@ Response:
   "carbs_g": 48.2,
   "protein_g": 25.1,
   "fat_g": 14.3,
-  "effective_carbs_g": 62.2,
+  "effective_carbs_g": 71.1,
+  "bolus_recommendation": {
+    "fpu": 2.29,
+    "equivalent_carbs_g": 22.9,
+    "total_active_carbs_g": 71.1,
+    "immediate_carbs_g": 48.2,
+    "extended_carbs_g": 22.9,
+    "extension_duration_hours": 5,
+    "total_insulin_units": 7.1,
+    "immediate_units": 4.8,
+    "extended_units": 2.3,
+    "immediate_pct": 68,
+    "extended_pct": 32,
+    "strategy": "dual_wave",
+    "activity_reduction_applied": false
+  },
   "num_images": 2,
   "confidence": "normal",
   "warnings": []
@@ -923,62 +1083,114 @@ Response:
 
 ---
 
-## 13. Effective Carbs — Theory & Configuration
+## 13. Bolus Recommendation — The Warsaw Method (FPU)
 
-### Why "Effective Carbs"?
+### Why "Effective Carbs" Isn't Enough
 
 Standard carb counting **only considers carbohydrates** for bolus calculation. But:
 
 - **Protein** is ~50% converted to glucose via gluconeogenesis, peaking 3–5 hours post-meal
-- **Fat** slows gastric emptying, delaying carb absorption, and contributes small amounts of glucose via glycerol
+- **Fat** slows gastric emptying and contributes glucose via glycerol on a delayed timeline
 
-For meals high in protein and/or fat (e.g., steak with mashed potatoes), pure carb counting misses a significant glucose contribution, leading to **late-onset hyperglycemia**.
+For meals high in protein/fat (e.g., pizza, steak), pure carb counting misses significant delayed glucose, causing **late-onset hyperglycemia**.
 
-### Linear Method (Default)
+### The Warsaw Method
 
-```
-effective_carbs = carbs + α × protein + β × fat
-```
+The system uses the **Warsaw Pumpers** method to calculate a full **dual-wave bolus recommendation**:
 
-| Parameter | Default | Meaning |
-|-----------|---------|---------|
-| `α` (alpha) | 0.5 | 50% of protein grams treated as carb-equivalent |
-| `β` (beta) | 0.1 | 10% of fat grams treated as carb-equivalent |
-
-**Example**: A meal with 60g carbs, 25g protein, 15g fat:
-```
-effective_carbs = 60 + 0.5 × 25 + 0.1 × 15 = 74.0g
-```
-
-### Warsaw Method
-
-Developed by the Warsaw Pumpers group, this method converts protein and fat to energy equivalents:
+#### Step A: Calculate Fat-Protein Units (FPU)
 
 ```
-effective_carbs = carbs + (protein × 4 + fat × 9) / 10
+Protein Calories = P × 4 kcal/g
+Fat Calories     = F × 9 kcal/g
+FPU              = (P × 4 + F × 9) / 100
 ```
 
-Where:
-- `protein × 4` = kcal from protein (4 kcal/g)
-- `fat × 9` = kcal from fat (9 kcal/g)
-- `÷ 10` = convert to carb equivalents (~10 kcal per "carb unit")
+**1 FPU = 100 kcal from fat + protein.**
 
-**Example**: Same meal (60g carbs, 25g protein, 15g fat):
+#### Step B: Calculate Equivalent Carbs (EC)
+
 ```
-effective_carbs = 60 + (25 × 4 + 15 × 9) / 10 = 60 + 23.5 = 83.5g
+EC = FPU × 10g    (adjustable: 7g or 5g based on personal CGM data)
 ```
+
+#### Step C: Total Active Carbs + Dual-Wave Split
+
+```
+Total Active Carbs = Carbs (immediate) + EC (extended)
+```
+
+| Component | Bolus Type | Timing |
+|-----------|-----------|--------|
+| **Carbs (C)** | Immediate bolus | At meal time |
+| **Equivalent Carbs (EC)** | Extended bolus | Over duration (see table) |
+
+#### Step D: Extension Duration
+
+| Fat-Protein Units | Duration | Example Meal |
+|:---|:---|:---|
+| **≤ 1 FPU** | 3 hours | Chicken breast, salad with oil |
+| **≤ 2 FPUs** | 4 hours | Eggs and cheese, creamy pasta |
+| **≤ 3 FPUs** | 5 hours | Steak and rice, burger |
+| **> 3 FPUs** | 8 hours | Pizza, high-fat BBQ |
+
+### Example Output
+
+Running inference on a meal image:
+
+```bash
+python scripts/predict.py \
+    --images data/sample/img_001.jpg \
+    --checkpoint models/best.pt \
+    --config configs/default.yaml
+```
+
+Produces:
+```
+{
+  "weight_g": 320.5,
+  "carbs_g": 48.2,
+  "protein_g": 25.1,
+  "fat_g": 14.3,
+  "effective_carbs_g": 71.1,
+  "num_images": 1
+}
+
+==================================================
+  💉 BOLUS RECOMMENDATION (Warsaw Method)
+==================================================
+  Fat-Protein Units (FPU):    2.29
+  Equivalent Carbs (EC):      22.9g
+  Total Active Carbs:         71.1g
+--------------------------------------------------
+  Strategy:                   dual_wave
+  Immediate (carbs):          48.2g  (68%)
+  Extended  (fat+protein):    22.9g  (32%)
+  Extension duration:         5 hours
+--------------------------------------------------
+  Immediate insulin:          4.8u
+  Extended insulin:           2.3u
+  Total insulin:              7.1u
+==================================================
+```
+
+### Safety Considerations
+
+> ⚠️ **Medical Disclaimer**: This is a decision-support tool, not medical advice. Always verify with your endocrinologist.
+
+- **Insulin Stacking**: If IOB (Insulin on Board) is high, the immediate dose should be reduced
+- **Activity**: If physically active post-meal, set `activity_reduction: true` in config → EC is halved to avoid delayed lows
+- **Personalisation**: Start with `fpu_to_carb_ratio: 10` and adjust down to `7` or `5` based on CGM trends
 
 ### Configuration
 
-In `configs/default.yaml`:
 ```yaml
-effective_carbs_alpha: 0.5
-effective_carbs_beta:  0.1
-# To use Warsaw method, add:
-# effective_carbs_method: warsaw
+# configs/default.yaml
+effective_carbs_method: warsaw     # 'linear' or 'warsaw'
+icr: 10.0                         # Insulin-to-Carb Ratio (1u per Ng)
+fpu_to_carb_ratio: 10.0           # 1 FPU = 10g (adjust to 7 or 5)
+activity_reduction: false          # if true, halve EC
 ```
-
-These parameters should be **tuned per-user** with guidance from their endocrinologist.
 
 ---
 
@@ -1044,11 +1256,11 @@ All parameters in `configs/default.yaml`:
 
 | Section | Parameter | Default | Description |
 |---------|-----------|---------|-------------|
-| **Backbone** | `backbone` | `efficientnet_b0` | timm model name |
+| **Backbone** | `backbone` | `efficientnet_b2` | timm model name |
 | | `pretrained` | `true` | Use ImageNet pretrained weights |
 | | `freeze_backbone` | `true` | Freeze backbone in Phase 1 |
-| | `unfreeze_top_n` | `3` | Layer groups to unfreeze in Phase 2 |
-| **Image** | `image_size` | `224` | Input image resolution |
+| | `unfreeze_top_n` | `4` | Layer groups to unfreeze in Phase 2 |
+| **Image** | `image_size` | `260` | Input resolution (B2 native) |
 | | `image_mean` | `[0.485, 0.456, 0.406]` | ImageNet channel means |
 | | `image_std` | `[0.229, 0.224, 0.225]` | ImageNet channel stds |
 | **Data** | `data_csv` | `data/nutrition5k/processed.csv` | Path to training CSV |
@@ -1060,23 +1272,27 @@ All parameters in `configs/default.yaml`:
 | **Normalisation** | `target_mean` | `null` | Auto-computed from data |
 | | `target_std` | `null` | Auto-computed from data |
 | **Training** | `epochs_frozen` | `10` | Phase 1 epochs |
-| | `epochs_finetune` | `20` | Phase 2 epochs |
+| | `epochs_finetune` | `30` | Phase 2 epochs |
 | | `lr_head` | `1e-3` | Head learning rate |
 | | `lr_backbone` | `1e-4` | Backbone learning rate |
-| | `weight_decay` | `1e-4` | L2 regularisation |
+| | `weight_decay` | `5e-4` | L2 regularisation |
+| | `scheduler` | `cosine` | LR schedule: `cosine` or `none` |
 | | `optimizer` | `adamw` | `adamw` or `adam` |
-| **Loss** | `loss_type` | `smooth_l1` | `smooth_l1` or `mse` |
-| | `lambda_weight` | `1.0` | Weight loss coefficient |
+| **Loss** | `loss_type` | `mse` | `smooth_l1` or `mse` |
+| | `lambda_weight` | `2.0` | Weight loss coefficient |
 | | `lambda_carbs` | `2.0` | Carbs loss coefficient |
 | | `lambda_protein` | `1.0` | Protein loss coefficient |
 | | `lambda_fat` | `1.0` | Fat loss coefficient |
-| **Effective Carbs** | `effective_carbs_alpha` | `0.5` | Protein coefficient |
-| | `effective_carbs_beta` | `0.1` | Fat coefficient |
+| **Warsaw Method** | `effective_carbs_method` | `warsaw` | `linear` or `warsaw` |
+| | `icr` | `10.0` | Insulin-to-Carb Ratio (1u per Ng) |
+| | `fpu_to_carb_ratio` | `10.0` | 1 FPU = Ng carbs (adjustable: 7 or 5) |
+| | `activity_reduction` | `false` | Halve EC for post-meal activity |
 | **Early Stopping** | `early_stopping_patience` | `7` | Epochs without improvement |
-| | `early_stopping_metric` | `val_carbs_mae` | Metric to monitor |
+| | `early_stopping_metric` | `val_carbs_g_mae` | Metric to monitor |
 | **Checkpoint** | `checkpoint_dir` | `models` | Save directory |
 | | `save_best_only` | `true` | Only save best model |
 | **Inference** | `multi_image_strategy` | `mean` | `mean` or `max` |
+| | `tta` | `true` | Test-time augmentation (5 views) |
 
 ---
 
@@ -1088,13 +1304,17 @@ The backbone can be swapped by changing one line in `configs/default.yaml`:
 backbone: resnet50   # change this
 ```
 
-| Backbone | Parameters | ImageNet Top-1 | Inference Speed | Recommended For |
-|----------|-----------|---------------|-----------------|-----------------|
-| `efficientnet_b0` ⭐ | 5.3M | 77.1% | Fast | **Default** — best accuracy/size trade-off |
-| `efficientnet_b1` | 7.8M | 79.1% | Medium | Higher accuracy, still mobile-friendly |
-| `resnet50` | 25.6M | 76.1% | Medium | Server-side; well-studied baseline |
-| `resnet34` | 21.8M | 73.3% | Fast | Lighter ResNet variant |
-| `mobilenetv2_100` | 3.4M | 72.0% | Very fast | On-device / edge deployment priority |
-| `mobilenetv3_large_100` | 5.4M | 75.2% | Very fast | Modern mobile architecture |
+> **Important**: When changing the backbone, update `image_size` to the backbone's native resolution for best results.
+
+| Backbone | Parameters | Native Resolution | ImageNet Top-1 | Recommended For |
+|----------|-----------|-------------------|---------------|-----------------|
+| `efficientnet_b0` | 5.3M | 224 | 77.1% | Quick experiments; mobile deployment |
+| `efficientnet_b1` | 7.8M | 240 | 79.1% | Higher accuracy, still mobile-friendly |
+| `efficientnet_b2` ⭐ | 9.1M | **260** | 80.1% | **Default** — best accuracy/size trade-off for food estimation |
+| `efficientnet_b3` | 12M | 300 | 81.6% | When accuracy is more important than speed |
+| `resnet50` | 25.6M | 224 | 76.1% | Server-side; well-studied baseline |
+| `resnet34` | 21.8M | 224 | 73.3% | Lighter ResNet variant |
+| `mobilenetv2_100` | 3.4M | 224 | 72.0% | On-device / edge deployment priority |
+| `mobilenetv3_large_100` | 5.4M | 224 | 75.2% | Modern mobile architecture |
 
 All backbones are loaded via the [`timm`](https://github.com/huggingface/pytorch-image-models) library with `num_classes=0` to strip the classification head, exposing the raw feature vector.

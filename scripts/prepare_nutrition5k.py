@@ -85,6 +85,17 @@ def main():
     print(f"Matched {len(matched)} / {len(all_dishes)} "
           f"dishes to images")
 
+    # Data cleaning — filter outliers
+    before = len(matched)
+    matched = [
+        d for d in matched
+        if d["weight_g"] <= 800
+        and d["carbs_g"] <= 200
+        and (d["carbs_g"] + d["protein_g"] + d["fat_g"]) > 0
+    ]
+    print(f"After cleaning: {len(matched)} dishes "
+          f"(removed {before - len(matched)} outliers)")
+
     # Write output CSV
     fieldnames = ["dish_id", "image_path", "weight_g",
                   "carbs_g", "protein_g", "fat_g"]
