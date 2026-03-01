@@ -35,6 +35,7 @@ COPY scripts/      scripts/
 COPY configs/      configs/
 COPY ui/           ui/
 COPY data/sample/  data/sample/
+COPY data/nutrition_db.json  data/nutrition_db.json
 
 # Copy model checkpoint (if it exists at build time)
 COPY models/       models/
