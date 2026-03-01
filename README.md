@@ -8,22 +8,24 @@ A deep learning pipeline that estimates **food weight**, **carbohydrates**, **pr
 
 ## Table of Contents
 
-1. [Motivation & Background](#1-motivation--background)  
-2. [Project Structure](#2-project-structure)  
-3. [Architecture Overview](#3-architecture-overview)  
-4. [Data Flow — End-to-End Pipeline](#4-data-flow--end-to-end-pipeline)  
-5. [Theoretical Foundations](#5-theoretical-foundations)  
-6. [Setup Instructions](#6-setup-instructions)  
-7. [Docker & Cloud Run](#7-docker--cloud-run)  
-8. [Data Acquisition — Nutrition5k](#8-data-acquisition--nutrition5k)  
-9. [Training the Model — Step by Step](#9-training-the-model--step-by-step)  
-10. [Evaluating the Model](#10-evaluating-the-model)  
-11. [Using the Model — Inference](#11-using-the-model--inference)  
-12. [REST API Reference](#12-rest-api-reference)  
-13. [Bolus Recommendation — The Warsaw Method (FPU)](#13-bolus-recommendation--the-warsaw-method-fpu)  
-14. [Personalization](#14-personalization)  
-15. [Configuration Reference](#15-configuration-reference)  
-16. [Supported Backbones](#16-supported-backbones)  
+1. [Motivation & Background](#1-motivation--background)
+2. [Project Structure](#2-project-structure)
+3. [Architecture Overview](#3-architecture-overview)
+4. [Data Flow — End-to-End Pipeline](#4-data-flow--end-to-end-pipeline)
+5. [Theoretical Foundations](#5-theoretical-foundations)
+6. [Setup Instructions](#6-setup-instructions)
+7. [Docker & Cloud Run](#7-docker--cloud-run)
+8. [Data Acquisition — Nutrition5k](#8-data-acquisition--nutrition5k)
+9. [Training the Model — Step by Step](#9-training-the-model--step-by-step)
+10. [Evaluating the Model](#10-evaluating-the-model)
+11. [Using the Product — Web UI Walkthrough](#11-using-the-product--web-ui-walkthrough)
+12. [Single Dish Pipeline — CLIP Classification](#12-single-dish-pipeline--clip-classification)
+13. [Composed Dish Pipeline — Direct Regression](#13-composed-dish-pipeline--direct-regression)
+14. [REST API Reference](#14-rest-api-reference)
+15. [Bolus Recommendation — The Warsaw Method (FPU)](#15-bolus-recommendation--the-warsaw-method-fpu)
+16. [Personalization](#16-personalization)
+17. [Configuration Reference](#17-configuration-reference)
+18. [Supported Backbones](#18-supported-backbones)  
 
 ---
 
@@ -47,7 +49,7 @@ This project builds a **computer vision system** that takes 1–3 photos of a me
 | `fat_g` | Grams of fat |
 | `effective_carbs_g` | Adjusted carb value accounting for protein & fat impact on glucose |
 
-The system uses **transfer learning** on top of a pretrained **EfficientNet-B0** backbone, trained on the **Nutrition5k** dataset from Google Research.
+The system uses **transfer learning** on top of a pretrained **EfficientNet-B2** backbone, trained on the **Nutrition5k** dataset from Google Research. A second pipeline uses **CLIP** (ViT-B-32) for zero-shot food classification of single items, combined with USDA nutrition data lookup.
 
 ---
 
@@ -72,6 +74,8 @@ L41_HomeWork/
 │   ├── trainer.py                 # Two-phase training loop
 │   ├── inference.py               # Prediction pipeline (1-3 images)
 │   ├── effective_carbs.py         # Effective carbs formula engine
+│   ├── food_classifier.py         # CLIP zero-shot food classification
+│   ├── nutrition_lookup.py        # USDA API + local JSON nutrition DB
 │   └── personalization.py         # User meal store + calibration layer
 │
 ├── scripts/                       # Command-line entry points
@@ -79,18 +83,26 @@ L41_HomeWork/
 │   ├── prepare_nutrition5k.py     # Parse raw CSVs → processed.csv
 │   ├── train.py                   # Training CLI
 │   ├── predict.py                 # Prediction CLI
+│   ├── evaluate.py                # Test set evaluation
 │   └── export_onnx.py             # ONNX model export
 │
 ├── api/                           # Flask REST API
 │   ├── __init__.py
-│   ├── app.py                     # API server (3 endpoints)
+│   ├── app.py                     # Flask app factory + legacy endpoints
+│   ├── meal_router.py             # Multi-dish analysis (single + composed)
 │   └── schemas.py                 # Request/response dataclasses
+│
+├── ui/                            # Web frontend
+│   ├── index.html                 # Single-page HTML shell
+│   ├── app.js                     # Client-side logic (dish management, API calls)
+│   └── styles.css                 # Dark-theme design system
 │
 ├── data/
 │   ├── nutrition5k/               # Downloaded dataset (via script)
 │   │   ├── metadata/              # Raw CSV files from GCS
 │   │   ├── imagery/               # Overhead RGB images (~5k dishes)
 │   │   └── processed.csv          # Unified CSV for pipeline
+│   ├── nutrition_db.json          # Local nutrition DB (~80 foods, per 100g)
 │   └── sample/                    # Synthetic smoke-test data
 │       ├── metadata.csv           # 10 rows of demo data
 │       └── img_001..010.jpg       # Placeholder images (224×224)
@@ -150,7 +162,49 @@ graph TD
     style N fill:#FFD700,color:black
 ```
 
-### 3.2 Model Component Details
+### 3.2 Dual-Mode Analysis Architecture
+
+The system supports two distinct analysis pipelines, selected per dish:
+
+```mermaid
+graph TD
+    subgraph Input
+        A["User uploads image"]
+    end
+
+    A --> B{"Mode?"}
+
+    subgraph SinglePipeline ["Single Item Pipeline"]
+        B -->|single| C["CLIP ViT-B-32<br/>Zero-shot classify<br/>(src/food_classifier.py)"]
+        C --> D["Food name<br/>e.g. 'tomato'"]
+        D --> E["USDA API / Local DB<br/>Nutrition per 100g<br/>(src/nutrition_lookup.py)"]
+        A2["Same image"] --> F["Nutrition5k Model<br/>Weight estimation<br/>(src/inference.py)"]
+        E --> G["macros = per_100g<br/>× weight / 100"]
+        F --> G
+    end
+
+    subgraph ComposedPipeline ["Composed Dish Pipeline"]
+        B -->|composed| H["Nutrition5k Model<br/>Direct regression<br/>(src/inference.py)"]
+        H --> I["weight, carbs,<br/>protein, fat"]
+    end
+
+    G --> J["Effective Carbs +<br/>Bolus Recommendation<br/>(src/effective_carbs.py)"]
+    I --> J
+    J --> K["JSON Response"]
+
+    style C fill:#E8744F,color:white
+    style H fill:#4A90D9,color:white
+    style J fill:#50C878,color:white
+```
+
+**When to use each mode:**
+
+| Mode | Best For | How It Works |
+|------|----------|--------------|
+| **Single** | One identifiable food (apple, chicken breast, rice) | Classify food type, look up known nutrition, estimate weight |
+| **Composed** | Multi-ingredient dishes (salad, stir-fry, pasta) | Direct end-to-end regression from image pixels to macros |
+
+### 3.3 Model Component Details
 
 | Component | Specification | Why This Choice |
 |-----------|--------------|-----------------|
@@ -314,7 +368,7 @@ The loss is a **weighted sum of per-target Smooth-L1 (Huber) losses**:
 L_total = λ_w · L_weight + λ_c · L_carbs + λ_p · L_protein + λ_f · L_fat
 ```
 
-Default weights: `λ_w=1.0`, `λ_c=2.0`, `λ_p=1.0`, `λ_f=1.0`
+Default weights: `λ_w=2.0`, `λ_c=2.0`, `λ_p=1.0`, `λ_f=1.0`
 
 **Why Smooth-L1 instead of MSE?** Smooth-L1 (Huber loss) is less sensitive to outliers:
 
@@ -369,7 +423,7 @@ During inference on user photos:
 
 #### Step 10: Effective Carbs (`src/effective_carbs.py`)
 
-The final output is the **effective carbs** value — see [Section 12](#12-effective-carbs--theory--configuration) for theory.
+The final output is the **effective carbs** value — see [Section 15](#15-bolus-recommendation--the-warsaw-method-fpu) for theory.
 
 ---
 
@@ -504,6 +558,8 @@ print('✅ Installation verified. Backbone:', cfg['backbone'])
 | `onnxruntime` | ≥1.16.0 | ONNX model execution |
 | `matplotlib` | ≥3.8.0 | Plotting and visualisation |
 | `numpy` | ≥1.26.0 | Numerical computing |
+| `open-clip-torch` | ≥2.24.0 | CLIP zero-shot food classification (ViT-B-32) |
+| `pillow-heif` | ≥0.16.0 | HEIC/HEIF image support (iPhone photos) |
 
 ---
 
@@ -877,93 +933,306 @@ The system tracks bias separately and surfaces it in evaluation output.
 
 ---
 
-## 11. Using the Model — Inference (Client-Mode Trials)
+## 11. Using the Product — Web UI Walkthrough
 
-After training and evaluation, use the model as a client would — pass any food image and get macro predictions:
+The web interface is served by the Flask API at `http://localhost:5000`. It allows users to analyse up to 5 dishes per meal in two modes.
 
-### CLI Prediction (Single Image)
+### Starting the Server
 
 ```bash
-# Step 3: Run inference on a test image
-python scripts/predict.py \
-    --images data/sample/img_001.jpg \
-    --checkpoint models/best.pt \
-    --config configs/default.yaml
+source venv/bin/activate
+python api/app.py
 ```
 
-Output:
-```json
-{
-  "weight_g": 320.5,
-  "carbs_g": 48.2,
-  "protein_g": 25.1,
-  "fat_g": 14.3,
-  "effective_carbs_g": 62.2,
-  "num_images": 1
+**What happens at startup** (`api/app.py:30-38`):
+
+1. `create_app()` loads the config from `configs/default.yaml` via `src/config.py`
+2. Resolves the checkpoint path: `models/best.pt`
+3. Calls `init_meal_blueprint(cfg, checkpoint)` to inject config into the meal router
+4. Registers the `meal_bp` blueprint (defined in `api/meal_router.py`)
+5. Flask starts serving the UI on port 5000
+
+### Step 1: Page Load
+
+When the user opens `http://localhost:5000`:
+
+1. **`GET /`** serves `ui/index.html` (`api/app.py:46-48`) — a minimal HTML shell with a header, dishes container, loading spinner, and results area.
+
+2. **`ui/app.js`** loads and runs `DOMContentLoaded` (`ui/app.js:19-33`):
+   - Calls `addDish()` to create the first dish card
+   - Attaches click handlers to "Add Dish", "Analyse Meal", and "New Analysis" buttons
+   - Fetches `GET /api/foods` (`api/meal_router.py:146-149`) to pre-load the food name autocomplete list. This calls `list_foods()` from `src/nutrition_lookup.py:134-137`, which returns sorted keys from `data/nutrition_db.json`
+
+### Step 2: Adding Dishes
+
+Each dish card (`ui/app.js:36-127`) contains:
+
+- **Mode toggle** — two buttons: "Single Item" and "Composed Dish"
+- **Single mode inputs** — image upload (1 photo) + optional food name and weight override fields
+- **Composed mode inputs** — image upload (up to 3 photos) + optional dish name
+- **Remove button** — deletes the dish card
+
+State is tracked in the `dishData` object (`ui/app.js:13-14`):
+```javascript
+dishData[id] = { mode: 'single', name: '', files: [], weight: '' }
+```
+
+The user can add up to `MAX_DISHES = 5` dishes. Each starts in single mode by default.
+
+### Step 3: Mode Selection
+
+When the user clicks a mode button, `setMode(id, mode)` (`ui/app.js:129-161`):
+
+1. Resets the dish state (clears files, name, weight)
+2. Toggles visibility: shows single-mode inputs or composed-mode inputs
+3. Updates the active button styling (`.mode-btn.active` in `ui/styles.css:224-228`)
+
+**Single mode** — user uploads **one** photo of a recognisable food item (e.g. a tomato, a chicken breast). The food name and weight are auto-detected from the image. Optional override fields let the user type a food name or weight if they know it.
+
+**Composed mode** — user uploads **1-3** photos of a multi-ingredient dish (e.g. pasta with sauce, a salad). The Nutrition5k model predicts macros directly from the images.
+
+### Step 4: Image Upload
+
+**Single mode** — `triggerSingleUpload()` and `handleSingleFile()` (`ui/app.js:245-267`):
+- Opens the file picker (limited to `accept="image/*"`)
+- Replaces any existing image (only 1 allowed)
+- Shows a preview thumbnail with a remove button
+
+**Composed mode** — `triggerUpload()` and `handleFiles()` (`ui/app.js:184-225`):
+- Opens the file picker with `multiple` attribute
+- Appends files up to `MAX_IMAGES = 3`
+- Renders preview thumbnails with individual remove buttons
+- Shows image count ("2 / 3 images")
+
+### Step 5: Clicking "Analyse Meal"
+
+When the user clicks the primary button, `analyseMeal()` (`ui/app.js:329-401`) runs:
+
+1. **Filter valid dishes** — only dishes with data (single: image or name+weight; composed: at least 1 image)
+2. **Show loading spinner** — `showLoading(true)` displays the spinner (`ui/styles.css:334-364`)
+3. **Build FormData** — for each valid dish, appends:
+   - `dish_N_mode` — `"single"` or `"composed"`
+   - `dish_N_name` — food/dish name (may be empty for auto-detection)
+   - `dish_N_weight` — manual weight override (single mode only, may be empty)
+   - `dish_N_images` — image file(s)
+4. **POST to `/api/analyse_meal`** — the FormData is sent as `multipart/form-data`
+5. **Handle response** — on success, calls `renderResults()`; on error, calls `showError()`
+
+### Step 6: Backend Analysis
+
+The request arrives at `analyse_meal()` in `api/meal_router.py:154-270`:
+
+1. **Parse dishes** — iterates through `dish_0_*`, `dish_1_*`, etc., reading mode, name, weight, and images from the form data
+2. **Per-dish analysis** — dispatches to the appropriate handler:
+   - **Single**: `_analyse_single()` (`api/meal_router.py:275-384`) — see [Section 12](#12-single-dish-pipeline--clip-classification)
+   - **Composed**: `_analyse_composed()` (`api/meal_router.py:387-403`) — see [Section 13](#13-composed-dish-pipeline--direct-regression)
+3. **Meal totals** — sums weight, carbs, protein, fat across all dishes
+4. **Bolus recommendation** — calls `bolus_recommendation_from_config()` from `src/effective_carbs.py` using meal totals
+5. **Cleanup** — deletes all temporary image files in a `finally` block
+
+### Step 7: Results Display
+
+`renderResults(data, previewUrls)` (`ui/app.js:404-570`) builds three visual sections:
+
+**Per-dish result cards** — for each dish:
+- Thumbnail preview (from the uploaded image)
+- Food name + mode badge ("Single" / "Composed")
+- Source badge for single mode ("USDA" green or "Local DB" amber)
+- USDA matched description (if different from input name)
+- Classification info bar (single mode only): shows CLIP-identified food name + confidence %
+- Macro grid: weight, carbs, protein, fat
+
+**Meal totals card** — aggregated macros + Fat-Protein Units, equivalent carbs, and total active carbs
+
+**Bolus recommendation card** — dual-wave insulin pump recommendation:
+- Immediate bolus (carbs portion, at meal time)
+- Extended bolus (fat+protein portion, delivered over N hours)
+- Total insulin units
+- Medical disclaimer
+
+### Step 8: New Analysis
+
+Clicking "New Analysis" calls `resetAll()` (`ui/app.js:317-326`), which clears all state, removes the results, and adds a fresh first dish card.
+
+---
+
+## 12. Single Dish Pipeline — CLIP Classification
+
+When a dish is set to **single mode**, the backend runs a 4-step pipeline that combines image classification, nutrition database lookup, and weight estimation.
+
+### Step 1: Image Classification (`src/food_classifier.py`)
+
+The classifier uses **CLIP** (Contrastive Language-Image Pre-training) for zero-shot food identification. CLIP can classify images against arbitrary text labels without any food-specific training.
+
+**Model**: ViT-B-32 pretrained on LAION-2B (~400M image-text pairs)
+
+**How it works** (`src/food_classifier.py:55-88`):
+
+1. On first call, `_load_model()` loads the CLIP model and tokeniser
+2. Builds a combined label set from two sources:
+   - **Food-101 labels** — 101 dish categories (pizza, sushi, hamburger, etc.) defined in `FOOD_101_LABELS` (`src/food_classifier.py:16-45`)
+   - **Local nutrition DB keys** — ~80 ingredient names (tomato, chicken breast, rice, etc.) loaded from `data/nutrition_db.json`
+3. Pre-computes text embeddings for all ~170 labels using the prompt template `"a photo of {name}, a type of food"`
+4. Caches everything in module globals for subsequent calls
+
+**Classification** (`src/food_classifier.py:91-120`):
+
+1. Opens the image and applies CLIP's preprocessing (resize, centre crop, normalise)
+2. Encodes the image into a 512-dim feature vector
+3. Computes cosine similarity against all pre-computed text embeddings
+4. Applies softmax to get probability distribution
+5. Returns top-3 predictions with confidence scores:
+   ```python
+   [{"name": "tomato", "confidence": 0.72}, {"name": "red pepper", "confidence": 0.11}, ...]
+   ```
+
+**Minimum confidence threshold** (`api/meal_router.py:296`):
+
+The top-1 prediction must reach **≥ 50% confidence** to be accepted. If it falls below this threshold, the API returns a `422` error asking the user to enter the food name manually. The error message includes the model's best guess and its confidence so the user can decide whether to use it:
+
+```
+"Could not confidently classify food from image (need ≥50% confidence).
+ Best guess: 'baklava' (34% confidence). Please enter the food name manually."
+```
+
+This prevents low-confidence misclassifications from silently propagating incorrect nutrition data through the rest of the pipeline.
+
+### Step 2: Nutrition Lookup (`src/nutrition_lookup.py`)
+
+Once the food is identified (either by CLIP with ≥50% confidence or by the user manually), `lookup_food(name)` (`src/nutrition_lookup.py:94-107`) retrieves nutrition facts per 100g:
+
+**Primary source — USDA FoodData Central API** (`src/nutrition_lookup.py:32-69`):
+- Queries `https://api.nal.usda.gov/fdc/v1/foods/search` (free, uses `DEMO_KEY` by default)
+- Filters for "Foundation" and "SR Legacy" data types (high-quality lab-measured data)
+- Extracts: carbs, protein, fat, calories per 100g
+- Returns source as `"usda_api"` with the USDA's matched description
+
+**Fallback — local JSON database** (`src/nutrition_lookup.py:72-91`):
+- Searches `data/nutrition_db.json` (~80 common foods with lab-verified per-100g macros)
+- Tries exact case-insensitive match first
+- Falls back to fuzzy matching via `difflib.get_close_matches(cutoff=0.6)`
+- Returns source as `"local_db"`
+
+**Fallback across CLIP candidates** — if the top-1 CLIP prediction doesn't match any nutrition source, the router tries the top-3 candidates (`api/meal_router.py:317-323`).
+
+### Step 3: Weight Estimation (`src/inference.py`)
+
+If the user didn't manually enter a weight, the system estimates it from the image using the same **Nutrition5k model** used for composed dishes:
+
+```python
+model_pred = predict_meal(temp_paths, _cfg, checkpoint=ckpt)
+weight_g = model_pred["weight_g"]
+```
+
+(`api/meal_router.py:344-351`)
+
+The model runs the full inference pipeline (`src/inference.py:79-137`):
+1. Loads `FoodMacroModel` from `models/best.pt`
+2. Applies eval transforms (resize 260x260, ImageNet normalise)
+3. Optional TTA (5 augmented views averaged)
+4. De-normalises using training set statistics
+5. The `weight_g` output is extracted; other predictions (carbs, protein, fat) are discarded since the nutrition lookup provides more accurate per-food values
+
+### Step 4: Final Calculation (`api/meal_router.py:362-375`)
+
+```python
+scale = weight_g / 100.0
+prediction = {
+    "weight_g": round(weight_g, 1),
+    "carbs_g": round(macros_per100["carbs_g"] * scale, 1),
+    "protein_g": round(macros_per100["protein_g"] * scale, 1),
+    "fat_g": round(macros_per100["fat_g"] * scale, 1),
+    ...
 }
 ```
 
-### Multi-Image Prediction (Better Accuracy)
+The final macros are: `nutrition_per_100g * estimated_weight / 100`.
 
-Taking 2–3 photos from different angles improves accuracy by reducing occlusion errors:
+### Optional Manual Overrides
+
+The user can override either auto-detected value:
+- **Food name override** — skips CLIP classification, uses the typed name for USDA lookup
+- **Weight override** — skips model weight estimation, uses the typed weight in grams
+
+This is handled in `_analyse_single()` (`api/meal_router.py:275-384`) by checking whether `food_name` and `weight_str` are non-empty before running the respective auto-detection step.
+
+---
+
+## 13. Composed Dish Pipeline — Direct Regression
+
+When a dish is set to **composed mode**, the system uses the Nutrition5k-trained model for end-to-end macro prediction.
+
+### Image Processing (`api/meal_router.py:387-403`)
+
+1. Each uploaded image is saved via `_save_upload()` (`api/meal_router.py:45-141`):
+   - Handles HEIC/HEIF format (iPhone photos) via `pillow-heif`
+   - Strips stray CRLF bytes from multipart parser leaks
+   - Falls back to macOS `sips` for format conversion
+   - Saves as clean PNG temp file
+
+2. All image paths are passed to `predict_meal()` (`src/inference.py:79-137`)
+
+### Model Inference (`src/inference.py`)
+
+**Step 1 — Load model** (`src/inference.py:21-43`):
+- Instantiates `FoodMacroModel(cfg)` (`src/model.py:20-44`):
+  - `get_backbone("efficientnet_b2", pretrained=True)` creates the backbone via `timm` (`src/backbone.py:18-37`)
+  - Regression head: `Linear(1408 → 512) → ReLU → Dropout(0.3) → Linear(512 → 128) → ReLU → Linear(128 → 4)`
+- Loads checkpoint weights from `models/best.pt`
+- Extracts `target_mean` and `target_std` from the checkpoint for de-normalisation
+
+**Step 2 — Per-image prediction** (`src/inference.py:99-106`):
+- Each image is opened with PIL and converted to RGB
+- If TTA enabled (`tta: true` in config): runs through 5 augmented transforms (`src/transforms.py:51-97`) and averages predictions
+- If TTA disabled: single forward pass with eval transforms (`src/transforms.py:38-48`)
+
+**Step 3 — Multi-image aggregation** (`src/inference.py:108-115`):
+```python
+strategy = cfg.get("multi_image_strategy", "mean")
+if strategy == "mean":
+    aggregated = preds.mean(axis=0)
+else:
+    aggregated = preds.max(axis=0)
+```
+
+**Step 4 — De-normalisation** (`src/inference.py:46-54`):
+```python
+denorm = preds * (std + 1e-8) + mean
+```
+Reverses the z-score normalisation applied during training. The mean/std values come from the training set and are stored in the checkpoint.
+
+**Step 5 — Post-processing** (`src/inference.py:120-137`):
+- Clamps all values to >= 0 (negative grams are not physical)
+- Computes effective carbs via `effective_carbs_from_config()`
+- Computes bolus recommendation via `bolus_recommendation_from_config()`
+- Returns: `{weight_g, carbs_g, protein_g, fat_g, effective_carbs_g, bolus_recommendation, num_images}`
+
+### CLI Prediction
+
+The composed pipeline is also available via the CLI:
 
 ```bash
 python scripts/predict.py \
-    --images data/sample/img_003.jpg data/sample/img_005.jpg \
+    --images meal1.jpg meal2.jpg \
     --checkpoint models/best.pt \
     --config configs/default.yaml
-```
-
-The system runs inference on each image independently, then **aggregates predictions** using the configured strategy:
-
-| Strategy | Behaviour | Best For |
-|----------|-----------|----------|
-| `mean` (default) | Averages predictions across views | General use; smooths out angle-specific errors |
-| `max` | Takes the maximum prediction per target | Conservative; when underestimation is more dangerous |
-
-Configure in `configs/default.yaml`:
-```yaml
-multi_image_strategy: mean   # or max
 ```
 
 ### Test-Time Augmentation (TTA)
 
-When `tta: true` is set in the config, each image is automatically run through **5 augmented variants** and predictions are averaged:
+When enabled, each image is run through **5 augmented variants** and predictions are averaged (`src/transforms.py:51-97`):
 
 | Variant | Transform | Purpose |
 |---------|-----------|----------|
-| Original | None (resize + normalize) | Baseline prediction |
+| Original | Resize + normalize | Baseline prediction |
 | Flip | Horizontal mirror | Reduces left/right bias |
-| Zoom | 10% zoom + center crop | Accounts for portion-size perspective |
-| Rotation | ±10° rotation | Accounts for plate orientation |
-| Color shift | Brightness/contrast +15% | Handles lighting variation |
+| Zoom | 10% zoom + centre crop | Accounts for portion-size perspective |
+| Rotation | +/-10 degrees | Accounts for plate orientation |
+| Colour shift | Brightness/contrast +15% | Handles lighting variation |
 
-TTA reduces prediction variance by ~10-15% with no training cost. It makes inference 5× slower, but this is negligible for single-image predictions (≬100ms → ≬500ms).
+TTA reduces prediction variance by ~10-15% at the cost of 5x inference time.
 
-```yaml
-tta: true    # enable test-time augmentation
-```
-
-### Programmatic Use (Python)
-
-```python
-from src.config import load_config
-from src.inference import predict_meal
-
-cfg = load_config("configs/default.yaml")
-
-result = predict_meal(
-    image_paths=["meal.jpg"],
-    cfg=cfg,
-    checkpoint="models/best.pt",
-    device="cpu",           # or "cuda", "mps"
-)
-
-print(f"Carbs: {result['carbs_g']}g")
-print(f"Effective carbs: {result['effective_carbs_g']}g")
-```
-
-### ONNX Export (For Mobile / Edge Deployment)
+### ONNX Export
 
 ```bash
 python scripts/export_onnx.py \
@@ -972,15 +1241,9 @@ python scripts/export_onnx.py \
     --config configs/default.yaml
 ```
 
-The exported model:
-- **Input**: `(batch, 3, 224, 224)` float32 RGB tensor
-- **Output**: `(batch, 4)` normalised predictions `[weight, carbs, protein, fat]`
-- Supports dynamic batch size
-- Compatible with ONNX Runtime, CoreML (via conversion), TensorFlow Lite (via conversion)
-
 ---
 
-## 12. REST API Reference
+## 14. REST API Reference
 
 ### Start the Server
 
@@ -1004,76 +1267,121 @@ Response:
 {
   "status": "ok",
   "model_loaded": true,
-  "backbone": "efficientnet_b0"
+  "backbone": "efficientnet_b2"
 }
 ```
 
-#### `POST /predict_meal_macros` — Predict from Images
+Defined in `api/app.py:54-61`. Returns whether the model checkpoint exists and which backbone is configured.
 
-Upload 1–3 meal images as multipart form data:
+#### `GET /api/foods` — Food Name Autocomplete
 
 ```bash
-# Single image
-curl -X POST http://localhost:5000/predict_meal_macros \
-    -F "images=@meal_photo.jpg"
+curl http://localhost:5000/api/foods
+```
 
-# Multiple images
-curl -X POST http://localhost:5000/predict_meal_macros \
-    -F "images=@front.jpg" \
-    -F "images=@side.jpg" \
-    -F "images=@top.jpg"
+Response:
+```json
+["almond", "apple", "asparagus", "avocado", "bacon", ...]
+```
+
+Defined in `api/meal_router.py:146-149`. Returns sorted keys from `data/nutrition_db.json` for the frontend autocomplete datalist.
+
+#### `POST /api/analyse_meal` — Multi-Dish Meal Analysis
+
+The primary endpoint. Accepts up to 5 dishes, each in single or composed mode:
+
+```bash
+# Single dish (auto-classify + auto-weight)
+curl -X POST http://localhost:5000/api/analyse_meal \
+    -F "dish_0_mode=single" \
+    -F "dish_0_images=@tomato.jpg"
+
+# Single dish with manual overrides
+curl -X POST http://localhost:5000/api/analyse_meal \
+    -F "dish_0_mode=single" \
+    -F "dish_0_images=@food.jpg" \
+    -F "dish_0_name=chicken breast" \
+    -F "dish_0_weight=200"
+
+# Composed dish
+curl -X POST http://localhost:5000/api/analyse_meal \
+    -F "dish_0_mode=composed" \
+    -F "dish_0_name=Pasta salad" \
+    -F "dish_0_images=@front.jpg" \
+    -F "dish_0_images=@top.jpg"
+
+# Mixed meal (single + composed)
+curl -X POST http://localhost:5000/api/analyse_meal \
+    -F "dish_0_mode=single" \
+    -F "dish_0_images=@apple.jpg" \
+    -F "dish_1_mode=composed" \
+    -F "dish_1_images=@stew.jpg" \
+    -F "dish_1_images=@stew_top.jpg"
 ```
 
 Response:
 ```json
 {
-  "weight_g": 320.5,
-  "carbs_g": 48.2,
-  "protein_g": 25.1,
-  "fat_g": 14.3,
-  "effective_carbs_g": 71.1,
+  "dishes": [
+    {
+      "name": "tomato",
+      "mode": "single",
+      "weight_g": 150.0,
+      "carbs_g": 5.9,
+      "protein_g": 1.4,
+      "fat_g": 0.3,
+      "num_images": 1,
+      "source": "usda_api",
+      "usda_description": "Tomatoes, red, ripe, raw, year round average",
+      "classification": [
+        {"name": "tomato", "confidence": 0.72},
+        {"name": "red pepper", "confidence": 0.11},
+        {"name": "strawberry", "confidence": 0.05}
+      ]
+    }
+  ],
+  "totals": {
+    "weight_g": 150.0,
+    "carbs_g": 5.9,
+    "protein_g": 1.4,
+    "fat_g": 0.3,
+    "num_dishes": 1
+  },
   "bolus_recommendation": {
-    "fpu": 2.29,
-    "equivalent_carbs_g": 22.9,
-    "total_active_carbs_g": 71.1,
-    "immediate_carbs_g": 48.2,
-    "extended_carbs_g": 22.9,
-    "extension_duration_hours": 5,
-    "total_insulin_units": 7.1,
-    "immediate_units": 4.8,
-    "extended_units": 2.3,
-    "immediate_pct": 68,
-    "extended_pct": 32,
+    "fpu": 0.08,
+    "equivalent_carbs_g": 0.8,
+    "total_active_carbs_g": 6.7,
+    "immediate_carbs_g": 5.9,
+    "extended_carbs_g": 0.8,
+    "extension_duration_hours": 3,
+    "total_insulin_units": 0.7,
+    "immediate_units": 0.6,
+    "extended_units": 0.1,
+    "immediate_pct": 88,
+    "extended_pct": 12,
     "strategy": "dual_wave",
     "activity_reduction_applied": false
-  },
-  "num_images": 2,
-  "confidence": "normal",
-  "warnings": []
+  }
 }
 ```
 
-Error responses:
-```json
-{"error": "No images provided"}     // 400 — no files uploaded
-{"error": "Max 3 images allowed"}   // 400 — too many images
+Defined in `api/meal_router.py:154-270`.
+
+#### `POST /predict_meal_macros` — Legacy Single Prediction
+
+```bash
+curl -X POST http://localhost:5000/predict_meal_macros \
+    -F "images=@meal_photo.jpg"
 ```
 
-#### `POST /effective_carbs` — Recalculate Effective Carbs
+Defined in `api/app.py:63-88`. Accepts 1-3 images, runs the composed pipeline directly. Kept for backward compatibility.
 
-Useful when the user manually adjusts macro values and wants updated effective carbs without re-running inference:
+#### `POST /effective_carbs` — Recalculate Effective Carbs
 
 ```bash
 curl -X POST http://localhost:5000/effective_carbs \
     -H "Content-Type: application/json" \
-    -d '{
-        "carbs_g": 60,
-        "protein_g": 25,
-        "fat_g": 15,
-        "alpha": 0.5,
-        "beta": 0.1,
-        "method": "linear"
-    }'
+    -d '{"carbs_g": 60, "protein_g": 25, "fat_g": 15}'
 ```
 
 Response:
@@ -1081,9 +1389,11 @@ Response:
 {"effective_carbs_g": 74.0}
 ```
 
+Defined in `api/app.py:90-104`. Useful when the user manually adjusts macro values.
+
 ---
 
-## 13. Bolus Recommendation — The Warsaw Method (FPU)
+## 15. Bolus Recommendation — The Warsaw Method (FPU)
 
 ### Why "Effective Carbs" Isn't Enough
 
@@ -1194,13 +1504,13 @@ activity_reduction: false          # if true, halve EC
 
 ---
 
-## 14. Personalization
+## 16. Personalization
 
 ### Concept
 
 Over time, the system can learn individual eating patterns, plate sizes, and typical portion preferences. This is implemented via two mechanisms:
 
-### 13.1 User Meal Store
+### 16.1 User Meal Store
 
 The system logs each prediction along with the user's manual corrections:
 
@@ -1219,7 +1529,7 @@ store.add_meal(
 
 Meals are stored as JSON in `data/users/{user_id}_meals.json`.
 
-### 13.2 Calibration Layer
+### 16.2 Calibration Layer
 
 After collecting enough corrections (typically 10–20 meals), a per-user **calibration layer** can be trained:
 
@@ -1250,7 +1560,7 @@ This corrects for systematic errors specific to the user's food habits (e.g., if
 
 ---
 
-## 15. Configuration Reference
+## 17. Configuration Reference
 
 All parameters in `configs/default.yaml`:
 
@@ -1296,7 +1606,7 @@ All parameters in `configs/default.yaml`:
 
 ---
 
-## 16. Supported Backbones
+## 18. Supported Backbones
 
 The backbone can be swapped by changing one line in `configs/default.yaml`:
 

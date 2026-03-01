@@ -192,6 +192,103 @@ body::before {
     background: rgba(248, 113, 113, 0.1);
 }
 
+/* ── Mode Toggle ──────────────────────────────────── */
+.mode-toggle {
+    display: flex;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+    flex: 1;
+}
+
+.mode-btn {
+    flex: 1;
+    padding: 0.4rem 0.75rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+    white-space: nowrap;
+}
+
+.mode-btn:hover {
+    color: var(--text-secondary);
+}
+
+.mode-btn.active {
+    background: var(--gradient-1);
+    color: white;
+    box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+/* ── Single Item Inputs ──────────────────────────── */
+.single-inputs .upload-area {
+    margin-bottom: 0.5rem;
+}
+
+.single-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+}
+
+.single-overrides {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.single-overrides .dish-name-input {
+    flex: 1;
+}
+
+.weight-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+.weight-input {
+    width: 120px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.75rem;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    transition: border-color var(--transition);
+}
+
+.weight-input::placeholder {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.weight-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.weight-unit {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+/* ── Composed Inputs ─────────────────────────────── */
+.composed-inputs .dish-name-input {
+    width: 100%;
+    margin-bottom: 0.75rem;
+}
+
 /* ── Upload Area ──────────────────────────────────── */
 .upload-area {
     display: flex;
@@ -459,6 +556,91 @@ body::before {
     margin-top: 0.15rem;
 }
 
+/* ── Source & Mode Badges ─────────────────────────── */
+.source-tag {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.source-tag.usda_api {
+    background: rgba(52, 211, 153, 0.12);
+    color: var(--success);
+    border: 1px solid rgba(52, 211, 153, 0.25);
+}
+
+.source-tag.local_db {
+    background: rgba(251, 191, 36, 0.1);
+    color: var(--warning);
+    border: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+.mode-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.mode-badge.single {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--accent-light);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.mode-badge.composed {
+    background: rgba(139, 92, 246, 0.1);
+    color: #c084fc;
+    border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.usda-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ── Classification Info ─────────────────────────── */
+.classification-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.75rem;
+    background: rgba(99, 102, 241, 0.06);
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(99, 102, 241, 0.12);
+}
+
+.classification-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.classification-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent-light);
+    text-transform: capitalize;
+}
+
+.classification-confidence {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--success);
+    background: var(--success-bg);
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    margin-left: auto;
+}
+
 /* ── Totals Card ──────────────────────────────────── */
 .totals-card {
     background: var(--bg-card);
@@ -666,5 +848,26 @@ body::before {
 
     .actions {
         flex-direction: column;
+    }
+
+    .single-overrides {
+        flex-direction: column;
+    }
+
+    .weight-input {
+        width: 100%;
+    }
+
+    .mode-toggle {
+        flex-direction: column;
+    }
+
+    .dish-result-header {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .classification-info {
+        flex-wrap: wrap;
     }
 }

@@ -2,8 +2,9 @@
  * Multi-Dish Meal Analyser — Client-Side Logic.
  *
  * Each dish can be:
- *   - "single"   → user types food name + weight → USDA lookup
- *   - "composed" → user uploads image(s) → Nutrition5k model
+ *   - "single"   → upload image → CLIP classification + weight estimation
+ *                   (optionally override name / weight manually)
+ *   - "composed" → upload image(s) → Nutrition5k model direct regression
  */
 
 const MAX_DISHES = 5;
@@ -11,7 +12,7 @@ const MAX_IMAGES = 3;
 
 let dishCount = 0;
 let dishData = {};
-// { id: { mode: 'single'|'composed', name, files: File[], weight } }
+// { id: { mode, name, files: File[], weight } }
 
 let foodList = [];  // cached for autocomplete
 
@@ -50,11 +51,11 @@ function addDish() {
             <div class="mode-toggle">
                 <button class="mode-btn active" id="modeBtn-single-${id}"
                         onclick="setMode(${id}, 'single')">
-                    🥑 Single Item
+                    Single Item
                 </button>
                 <button class="mode-btn" id="modeBtn-composed-${id}"
                         onclick="setMode(${id}, 'composed')">
-                    🍽️ Composed Dish
+                    Composed Dish
                 </button>
             </div>
 
@@ -63,27 +64,43 @@ function addDish() {
                     title="Remove dish">&times;</button>
         </div>
 
-        <!-- Single item inputs -->
+        <!-- ─── Single item inputs ─── -->
         <div class="single-inputs" id="singleInputs-${id}">
-            <input type="text" class="dish-name-input"
-                   id="nameInput-${id}"
-                   placeholder="Food name (e.g. tomato, chicken breast)"
-                   list="foodSuggestions-${id}"
-                   oninput="dishData[${id}].name = this.value">
-            <datalist id="foodSuggestions-${id}">
-                ${foodList.map(f => `<option value="${f}">`).join('')}
-            </datalist>
-            <div class="weight-input-row">
-                <input type="number" class="weight-input"
-                       id="weightInput-${id}"
-                       placeholder="Weight (g)"
-                       min="1" step="1"
-                       oninput="dishData[${id}].weight = this.value">
-                <span class="weight-unit">g</span>
+            <div class="upload-area">
+                <div class="image-previews" id="singlePreviews-${id}"></div>
+                <button class="upload-btn" id="singleUploadBtn-${id}"
+                        onclick="triggerSingleUpload(${id})">
+                    <span class="icon">📷</span>
+                    Add photo
+                </button>
+                <input type="file" id="singleFileInput-${id}"
+                       accept="image/*" hidden
+                       onchange="handleSingleFile(${id}, this.files)">
+            </div>
+            <p class="single-hint">
+                Upload a photo — the food will be auto-identified and weighed.
+            </p>
+            <div class="single-overrides">
+                <input type="text" class="dish-name-input"
+                       id="nameInput-${id}"
+                       placeholder="Override food name (optional)"
+                       list="foodSuggestions-${id}"
+                       oninput="dishData[${id}].name = this.value">
+                <datalist id="foodSuggestions-${id}">
+                    ${foodList.map(f => `<option value="${f}">`).join('')}
+                </datalist>
+                <div class="weight-input-row">
+                    <input type="number" class="weight-input"
+                           id="weightInput-${id}"
+                           placeholder="Override weight (optional)"
+                           min="1" step="1"
+                           oninput="dishData[${id}].weight = this.value">
+                    <span class="weight-unit">g</span>
+                </div>
             </div>
         </div>
 
-        <!-- Composed dish inputs (image upload) -->
+        <!-- ─── Composed dish inputs ─── -->
         <div class="composed-inputs hidden" id="composedInputs-${id}">
             <input type="text" class="dish-name-input"
                    placeholder="Dish name (optional)"
@@ -139,6 +156,7 @@ function setMode(id, mode) {
     const weightInput = document.getElementById(`weightInput-${id}`);
     if (weightInput) weightInput.value = '';
     renderPreviews(id);
+    renderSinglePreview(id);
     updateUI();
 }
 
@@ -162,7 +180,7 @@ function renumberDishes() {
     });
 }
 
-/* ── Image Upload ─────────────────────────────────── */
+/* ── Image Upload (Composed) ─────────────────────── */
 function triggerUpload(id) {
     document.getElementById(`fileInput-${id}`).click();
 }
@@ -202,7 +220,7 @@ function renderPreviews(id) {
 
         const removeBtn = document.createElement('button');
         removeBtn.className = 'remove-img';
-        removeBtn.innerHTML = '✕';
+        removeBtn.innerHTML = '&times;';
         removeBtn.onclick = (e) => {
             e.stopPropagation();
             removeImage(id, idx);
@@ -224,13 +242,68 @@ function renderPreviews(id) {
     }
 }
 
+/* ── Image Upload (Single) ───────────────────────── */
+function triggerSingleUpload(id) {
+    document.getElementById(`singleFileInput-${id}`).click();
+}
+
+function handleSingleFile(id, fileList) {
+    const dish = dishData[id];
+    if (!dish || !fileList.length) return;
+
+    // Single mode: replace with latest image (only 1 allowed)
+    dish.files = [fileList[0]];
+    renderSinglePreview(id);
+    updateUI();
+}
+
+function removeSingleImage(id) {
+    dishData[id].files = [];
+    renderSinglePreview(id);
+    updateUI();
+}
+
+function renderSinglePreview(id) {
+    const container = document.getElementById(`singlePreviews-${id}`);
+    if (!container) return;
+    const dish = dishData[id];
+    container.innerHTML = '';
+
+    if (dish.files.length > 0) {
+        const div = document.createElement('div');
+        div.className = 'image-preview';
+
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(dish.files[0]);
+        img.alt = dish.files[0].name;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'remove-img';
+        removeBtn.innerHTML = '&times;';
+        removeBtn.onclick = (e) => {
+            e.stopPropagation();
+            removeSingleImage(id);
+        };
+
+        div.appendChild(img);
+        div.appendChild(removeBtn);
+        container.appendChild(div);
+    }
+
+    const btn = document.getElementById(`singleUploadBtn-${id}`);
+    if (btn) {
+        btn.classList.toggle('disabled', dish.files.length >= 1);
+    }
+}
+
 /* ── UI State ─────────────────────────────────────── */
 function updateUI() {
     const dishIds = Object.keys(dishData);
     const hasData = dishIds.some(id => {
         const d = dishData[id];
         if (d.mode === 'single') {
-            return d.name.trim() && d.weight;
+            // Single mode: need an image OR (name + weight)
+            return d.files.length > 0 || (d.name.trim() && d.weight);
         }
         return d.files.length > 0;
     });
@@ -256,7 +329,9 @@ function resetAll() {
 async function analyseMeal() {
     const dishIds = Object.keys(dishData).filter(id => {
         const d = dishData[id];
-        if (d.mode === 'single') return d.name.trim() && d.weight;
+        if (d.mode === 'single') {
+            return d.files.length > 0 || (d.name.trim() && d.weight);
+        }
         return d.files.length > 0;
     });
 
@@ -270,12 +345,23 @@ async function analyseMeal() {
     dishIds.forEach((id, idx) => {
         const dish = dishData[id];
         formData.append(`dish_${idx}_mode`, dish.mode);
-        formData.append(`dish_${idx}_name`,
-            dish.name || `Dish ${idx + 1}`);
+
+        if (dish.name) {
+            formData.append(`dish_${idx}_name`, dish.name);
+        }
 
         if (dish.mode === 'single') {
-            formData.append(`dish_${idx}_weight`, dish.weight);
+            if (dish.weight) {
+                formData.append(`dish_${idx}_weight`, dish.weight);
+            }
+            // Attach image (single mode now supports images)
+            dish.files.forEach(file => {
+                formData.append(`dish_${idx}_images`, file);
+            });
         } else {
+            if (!dish.name) {
+                formData.append(`dish_${idx}_name`, `Dish ${idx + 1}`);
+            }
             dish.files.forEach(file => {
                 formData.append(`dish_${idx}_images`, file);
             });
@@ -294,7 +380,7 @@ async function analyseMeal() {
             throw new Error(data.error || 'Analysis failed');
         }
 
-        // Collect preview URLs for composed dishes
+        // Collect preview URLs
         const previewUrls = dishIds.map(id => {
             const files = dishData[id].files;
             return files.length > 0
@@ -324,25 +410,52 @@ function renderResults(data, previewUrls) {
         const thumbHtml = thumbSrc
             ? `<img class="dish-result-thumb" src="${thumbSrc}" alt="">`
             : '';
+
+        // Source badge (USDA / Local DB)
         const sourceTag = dish.source
-            ? `<span class="source-tag">${dish.source === 'usda_api' ? '🇺🇸 USDA' : '📖 Local DB'}</span>`
+            ? `<span class="source-tag ${dish.source}">${
+                dish.source === 'usda_api' ? 'USDA' : 'Local DB'
+            }</span>`
             : '';
-        const descTag = dish.usda_description && dish.usda_description !== dish.name
+
+        // USDA matched description
+        const descTag = dish.usda_description
+            && dish.usda_description !== dish.name
             ? `<span class="usda-desc">${dish.usda_description}</span>`
             : '';
+
+        // Classification confidence (single mode with CLIP)
+        let classificationHtml = '';
+        if (dish.classification && dish.classification.length > 0) {
+            const pct = (dish.classification[0].confidence * 100).toFixed(0);
+            classificationHtml = `
+                <div class="classification-info">
+                    <span class="classification-label">Identified:</span>
+                    <span class="classification-name">${dish.classification[0].name}</span>
+                    <span class="classification-confidence">${pct}%</span>
+                </div>`;
+        }
+
+        // Mode badge
+        const modeBadge = `<span class="mode-badge ${dish.mode}">${
+            dish.mode === 'single' ? 'Single' : 'Composed'
+        }</span>`;
+
         return `
         <div class="dish-result">
             <div class="dish-result-header">
                 ${thumbHtml}
                 <span class="dish-result-name">${dish.name}</span>
+                ${modeBadge}
                 ${sourceTag}
                 ${descTag}
                 <span class="dish-result-images">
                     ${dish.num_images > 0
-                ? `${dish.num_images} image${dish.num_images > 1 ? 's' : ''}`
-                : `${dish.weight_g}g`}
+                        ? `${dish.num_images} image${dish.num_images > 1 ? 's' : ''}`
+                        : `${dish.weight_g}g`}
                 </span>
             </div>
+            ${classificationHtml}
             <div class="macro-grid">
                 <div class="macro-item">
                     <div class="macro-value">${dish.weight_g}g</div>
@@ -370,7 +483,7 @@ function renderResults(data, previewUrls) {
 
     const totalsHtml = `
         <div class="totals-card">
-            <h3>🍽️ Meal Totals</h3>
+            <h3>Meal Totals</h3>
             <div class="totals-macro-grid">
                 <div class="totals-macro-item">
                     <div class="totals-macro-value">${t.weight_g}g</div>
@@ -408,11 +521,11 @@ function renderResults(data, previewUrls) {
 
     const bolusHtml = `
         <div class="bolus-card">
-            <h3>💉 Combo Bolus Recommendation</h3>
+            <h3>Combo Bolus Recommendation</h3>
             <div class="bolus-split">
                 <div class="bolus-section">
                     <div class="bolus-section-title">
-                        ⚡ Immediate (${b.immediate_pct}%)
+                        Immediate (${b.immediate_pct}%)
                     </div>
                     <div class="bolus-units">
                         ${b.immediate_units}<span>u</span>
@@ -423,7 +536,7 @@ function renderResults(data, previewUrls) {
                 </div>
                 <div class="bolus-section">
                     <div class="bolus-section-title">
-                        ⏳ Extended (${b.extended_pct}%)
+                        Extended (${b.extended_pct}%)
                     </div>
                     <div class="bolus-units">
                         ${b.extended_units}<span>u</span>
@@ -441,7 +554,7 @@ function renderResults(data, previewUrls) {
                 </span>
             </div>
             <div class="bolus-disclaimer">
-                ⚠️ This is a decision-support tool, not medical advice.
+                This is a decision-support tool, not medical advice.
                 Always verify with your endocrinologist. Consider IOB
                 (insulin on board) and activity level before dosing.
             </div>

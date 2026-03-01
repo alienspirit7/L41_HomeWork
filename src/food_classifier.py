@@ -1,119 +1,120 @@
 """
-Lightweight food name classifier using pretrained ImageNet weights.
+Food classification using CLIP zero-shot inference.
 
-Uses the same EfficientNet backbone to predict a human-readable
-food name from the 1000 ImageNet classes. No extra training needed.
+Classifies a food image against a combined label set of Food-101
+categories and common single ingredients (from the local nutrition DB).
 """
 
+import json
+import os
+
 import torch
-import timm
+import open_clip
 from PIL import Image
-from src.transforms import get_eval_transforms
 
-# ImageNet food-related classes (index → friendly name).
-# Curated subset of the 1000 ImageNet categories.
-FOOD_LABELS = {
-    567: "Fried rice", 924: "Guacamole", 927: "Cup / Mug",
-    928: "Cup / Mug", 929: "Plate",
-    923: "Hot dog", 925: "Hot pot", 926: "Burrito",
-    930: "Espresso", 931: "Pizza slice",
-    932: "Ice cream", 933: "Ice lolly",
-    934: "French loaf", 935: "Bagel",
-    936: "Pretzel", 937: "Cheeseburger",
-    938: "Hot dog", 939: "Mashed potato",
-    940: "Broccoli", 941: "Cauliflower",
-    942: "Courgette", 943: "Spaghetti squash",
-    944: "Butternut squash", 945: "Cucumber",
-    946: "Artichoke", 947: "Pepper",
-    948: "Cardoon", 949: "Mushroom",
-    950: "Granny Smith apple", 951: "Strawberry",
-    952: "Orange", 953: "Lemon",
-    954: "Fig", 955: "Pineapple",
-    956: "Banana", 957: "Jackfruit",
-    958: "Custard apple", 959: "Pomegranate",
-    960: "Hay", 961: "Carbonara",
-    962: "Chocolate sauce", 963: "Dough",
-    964: "Meat loaf", 965: "Cheese / Pizza",
-    966: "Waffle", 967: "Trifle",
-    968: "Ice cream", 969: "Ice lolly / Popsicle",
-    541: "Drumstick / Chicken", 542: "Dumbbell",
-    553: "Frying pan / Stir fry", 559: "Grocery bag",
-    566: "French horn", 568: "Bread basket",
-}
+# ── Food-101 class labels (spaces, not underscores) ──────────
+FOOD_101_LABELS = [
+    "apple pie", "baby back ribs", "baklava", "beef carpaccio",
+    "beef tartare", "beet salad", "beignets", "bibimbap",
+    "bread pudding", "breakfast burrito", "bruschetta",
+    "caesar salad", "cannoli", "caprese salad", "carrot cake",
+    "ceviche", "cheesecake", "cheese plate", "chicken curry",
+    "chicken quesadilla", "chicken wings", "chocolate cake",
+    "chocolate mousse", "churros", "clam chowder",
+    "club sandwich", "crab cakes", "creme brulee",
+    "croque madame", "cup cakes", "deviled eggs", "donuts",
+    "dumplings", "edamame", "eggs benedict", "escargots",
+    "falafel", "filet mignon", "fish and chips", "foie gras",
+    "french fries", "french onion soup", "french toast",
+    "fried calamari", "fried rice", "frozen yogurt",
+    "garlic bread", "gnocchi", "greek salad",
+    "grilled cheese sandwich", "grilled salmon", "guacamole",
+    "gyoza", "hamburger", "hot and sour soup", "hot dog",
+    "huevos rancheros", "hummus", "ice cream", "lasagna",
+    "lobster bisque", "lobster roll sandwich",
+    "macaroni and cheese", "macarons", "miso soup", "mussels",
+    "nachos", "omelette", "onion rings", "oysters", "pad thai",
+    "paella", "pancakes", "panna cotta", "peking duck", "pho",
+    "pizza", "pork chop", "poutine", "prime rib",
+    "pulled pork sandwich", "ramen", "ravioli",
+    "red velvet cake", "risotto", "samosa", "sashimi",
+    "scallops", "seaweed salad", "shrimp and grits",
+    "spaghetti bolognese", "spaghetti carbonara",
+    "spring rolls", "steak", "strawberry shortcake", "sushi",
+    "tacos", "takoyaki", "tiramisu", "tuna tartare", "waffles",
+]
 
-# Fallback: full ImageNet label list (loaded on demand)
-_imagenet_labels = None
+# ── Singleton CLIP model ─────────────────────────────────────
+_model = None
+_preprocess = None
+_tokenizer = None
+_text_features = None
+_labels = None
 
 
-def _load_imagenet_labels() -> list[str]:
-    """Load all 1000 ImageNet class labels."""
-    global _imagenet_labels
-    if _imagenet_labels is not None:
-        return _imagenet_labels
+def _load_model():
+    """Load CLIP model and pre-compute text embeddings (lazy, cached)."""
+    global _model, _preprocess, _tokenizer, _text_features, _labels
+
+    if _model is not None:
+        return
+
+    print("[CLIP] loading ViT-B-32 model …")
+    _model, _, _preprocess = open_clip.create_model_and_transforms(
+        "ViT-B-32", pretrained="laion2b_s34b_b79k",
+    )
+    _tokenizer = open_clip.get_tokenizer("ViT-B-32")
+    _model.eval()
+
+    # Build combined label set: Food-101 + local nutrition DB keys
+    label_set = set(FOOD_101_LABELS)
+    db_path = os.path.join(
+        os.path.dirname(__file__), "..", "data", "nutrition_db.json",
+    )
+    if os.path.exists(db_path):
+        with open(db_path) as f:
+            db = json.load(f)
+        label_set.update(db.keys())
+
+    _labels = sorted(label_set)
+
+    # Pre-compute text embeddings for all labels
+    prompts = [f"a photo of {name}, a type of food" for name in _labels]
+    tokens = _tokenizer(prompts)
+    with torch.no_grad():
+        _text_features = _model.encode_text(tokens)
+        _text_features /= _text_features.norm(dim=-1, keepdim=True)
+
+    print(f"[CLIP] ready — {len(_labels)} food labels indexed")
+
+
+def classify_food(image_path: str, top_k: int = 3) -> list[dict]:
+    """Classify food in an image using CLIP zero-shot inference.
+
+    Returns a list of ``{name, confidence}`` dicts sorted by
+    descending confidence.  Returns an empty list on failure.
+    """
+    try:
+        _load_model()
+    except Exception as e:
+        print(f"[CLIP] failed to load model: {e}")
+        return []
 
     try:
-        from timm.data import ImageNetInfo
-        info = ImageNetInfo()
-        _imagenet_labels = [
-            info.label_names[i] for i in range(1000)
+        img = Image.open(image_path).convert("RGB")
+        img_tensor = _preprocess(img).unsqueeze(0)
+
+        with torch.no_grad():
+            image_features = _model.encode_image(img_tensor)
+            image_features /= image_features.norm(dim=-1, keepdim=True)
+
+            similarity = (image_features @ _text_features.T).softmax(dim=-1)
+            values, indices = similarity[0].topk(top_k)
+
+        return [
+            {"name": _labels[idx], "confidence": round(float(val), 4)}
+            for val, idx in zip(values, indices)
         ]
-    except Exception:
-        # Fallback: use timm's built-in
-        _imagenet_labels = [f"class_{i}" for i in range(1000)]
-
-    return _imagenet_labels
-
-
-def _clean_label(raw: str) -> str:
-    """Clean up an ImageNet label to be user-friendly."""
-    # Take first part before comma (e.g. "pizza, pizza pie" → "pizza")
-    name = raw.split(",")[0].strip()
-    # Capitalise
-    return name.replace("_", " ").title()
-
-
-_classifier_model = None
-_classifier_cfg = None
-
-
-@torch.no_grad()
-def predict_food_name(
-    image_path: str,
-    cfg: dict,
-    device: str = "cpu",
-    top_k: int = 1,
-) -> str:
-    """Predict a human-readable food name from an image.
-
-    Returns the most likely food name as a string.
-    """
-    global _classifier_model, _classifier_cfg
-
-    backbone = cfg.get("backbone", "efficientnet_b2")
-
-    # Lazy-load classifier (with head intact)
-    if _classifier_model is None or _classifier_cfg != backbone:
-        _classifier_model = timm.create_model(
-            backbone, pretrained=True, num_classes=1000,
-        )
-        _classifier_model.to(device)
-        _classifier_model.eval()
-        _classifier_cfg = backbone
-
-    transform = get_eval_transforms(cfg)
-    img = Image.open(image_path).convert("RGB")
-    tensor = transform(img).unsqueeze(0).to(device)
-
-    logits = _classifier_model(tensor)
-    probs = torch.softmax(logits, dim=1)
-    top_prob, top_idx = probs.topk(top_k, dim=1)
-
-    idx = top_idx[0][0].item()
-
-    # Check curated food labels first
-    if idx in FOOD_LABELS:
-        return FOOD_LABELS[idx]
-
-    # Fallback to ImageNet labels
-    labels = _load_imagenet_labels()
-    return _clean_label(labels[idx])
+    except Exception as e:
+        print(f"[CLIP] classification failed: {e}")
+        return []

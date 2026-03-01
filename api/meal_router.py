@@ -1,12 +1,14 @@
 """
 Multi-dish meal analysis blueprint.
 
-POST /api/analyse_meal — accepts up to 5 dishes (1-3 images each),
-returns per-dish predictions, meal totals, and combined bolus.
+POST /api/analyse_meal — accepts up to 5 dishes, each in one of two modes:
+  - **single**:   image → CLIP classification → USDA lookup → weight estimate
+  - **composed**: images → Nutrition5k model direct regression
+
+Returns per-dish predictions, meal totals, and combined bolus recommendation.
 """
 
 import os
-import io
 import tempfile
 
 from PIL import Image as PILImage
@@ -21,6 +23,8 @@ except ImportError:
 
 from src.inference import predict_meal
 from src.effective_carbs import bolus_recommendation_from_config
+from src.food_classifier import classify_food
+from src.nutrition_lookup import calculate_macros, list_foods, lookup_food
 
 meal_bp = Blueprint("meal", __name__)
 
@@ -137,15 +141,34 @@ def _save_upload(f) -> str:
     return path
 
 
+# ── Food list endpoint (autocomplete) ────────────────────────
+
 @meal_bp.route("/api/foods", methods=["GET"])
 def get_foods():
     """Return list of known food names for autocomplete."""
     return jsonify(list_foods())
 
 
+# ── Main analysis endpoint ───────────────────────────────────
+
 @meal_bp.route("/api/analyse_meal", methods=["POST"])
 def analyse_meal():
-    """Analyse a multi-dish meal (single-item or composed)."""
+    """Analyse a multi-dish meal.
+
+    Each dish has a *mode*:
+
+    **single** — single food item
+      1. Image is classified with CLIP (Food-101 / local DB labels).
+      2. Nutrition per 100 g is looked up from USDA or local DB.
+      3. Weight is estimated by the Nutrition5k model.
+      4. Final macros = nutrition_per_100g * estimated_weight / 100.
+      Optional overrides: ``dish_N_name`` and ``dish_N_weight``
+      skip the classifier / weight estimator respectively.
+
+    **composed** — multi-ingredient dish (unchanged)
+      Images are fed to the Nutrition5k model which directly predicts
+      weight, carbs, protein, and fat.
+    """
     dishes = []
     dish_idx = 0
 
@@ -154,19 +177,29 @@ def analyse_meal():
         mode = request.form.get(mode_key, "composed")
 
         if mode == "single":
-            # Single item: name + weight from form
+            # Single item: image (for classify + weight) or name+weight
+            key = f"dish_{dish_idx}_images"
+            files = request.files.getlist(key)
+            has_image = files and files[0].filename
+
             name = request.form.get(
                 f"dish_{dish_idx}_name", "",
             ).strip()
             weight_str = request.form.get(
                 f"dish_{dish_idx}_weight", "",
-            )
-            if not name:
+            ).strip()
+
+            # Need at least an image or a name to proceed
+            if not has_image and not name:
                 break
+
             dishes.append({
-                "mode": "single", "name": name,
+                "mode": "single",
+                "name": name,
                 "weight": weight_str,
+                "files": files if has_image else [],
             })
+
         else:
             # Composed dish: images from upload
             key = f"dish_{dish_idx}_images"
@@ -198,56 +231,13 @@ def analyse_meal():
     try:
         for dish in dishes:
             if dish["mode"] == "single":
-                # ── Single item: USDA / local lookup ──
-                try:
-                    weight = float(dish["weight"])
-                except (ValueError, TypeError):
-                    return jsonify({
-                        "error": f"Invalid weight for '{dish['name']}'",
-                    }), 400
-
-                macros = calculate_macros(dish["name"], weight)
-                if macros is None:
-                    return jsonify({
-                        "error": f"Food not found: '{dish['name']}'. "
-                                 "Try a different name.",
-                    }), 404
-
-                prediction = {
-                    "weight_g": macros["weight_g"],
-                    "carbs_g": macros["carbs_g"],
-                    "protein_g": macros["protein_g"],
-                    "fat_g": macros["fat_g"],
-                    "name": dish["name"],
-                    "num_images": 0,
-                    "mode": "single",
-                    "source": macros.get("source", ""),
-                    "usda_description": macros.get(
-                        "usda_description", dish["name"],
-                    ),
-                }
+                prediction = _analyse_single(dish, all_temp_paths)
+                if isinstance(prediction, tuple):
+                    # Error response
+                    return prediction
                 results.append(prediction)
-
             else:
-                # ── Composed dish: Nutrition5k model ──
-                temp_paths = []
-                for f in dish["files"]:
-                    path = _save_upload(f)
-                    temp_paths.append(path)
-                    all_temp_paths.append(path)
-
-                ckpt = (
-                    _checkpoint
-                    if os.path.exists(_checkpoint)
-                    else None
-                )
-                prediction = predict_meal(
-                    temp_paths, _cfg, checkpoint=ckpt,
-                )
-                prediction.pop("bolus_recommendation", None)
-                prediction["name"] = dish["name"]
-                prediction["num_images"] = len(temp_paths)
-                prediction["mode"] = "composed"
+                prediction = _analyse_composed(dish, all_temp_paths)
                 results.append(prediction)
 
         # Meal totals
@@ -278,3 +268,144 @@ def analyse_meal():
                 os.unlink(p)
             except OSError:
                 pass
+
+
+# ── Per-dish analysis helpers ─────────────────────────────────
+
+def _analyse_single(dish: dict, all_temp_paths: list) -> dict | tuple:
+    """Single-item pipeline: classify → lookup → estimate weight → calc.
+
+    Returns a prediction dict or a (jsonify(error), status) tuple.
+    """
+    food_name = dish["name"]
+    weight_str = dish["weight"]
+    files = dish["files"]
+
+    temp_paths = []
+    classification = []
+
+    # Save uploaded image
+    if files:
+        path = _save_upload(files[0])
+        temp_paths.append(path)
+        all_temp_paths.append(path)
+
+    # 1. Classify food name from image (if not manually provided)
+    MIN_CLIP_CONFIDENCE = 0.50
+
+    if not food_name and temp_paths:
+        classification = classify_food(temp_paths[0], top_k=3)
+        if classification and classification[0]["confidence"] >= MIN_CLIP_CONFIDENCE:
+            food_name = classification[0]["name"]
+            print(f"[SINGLE] CLIP classified: {food_name} "
+                  f"({classification[0]['confidence']:.1%})")
+        else:
+            top = classification[0] if classification else None
+            hint = (f" Best guess: '{top['name']}' "
+                    f"({top['confidence']:.0%} confidence)."
+                    if top else "")
+            return (
+                jsonify({"error": "Could not confidently classify food from "
+                                  "image (need ≥50% confidence)."
+                                  f"{hint} Please enter the food name "
+                                  "manually."}),
+                422,
+            )
+
+    if not food_name:
+        return (
+            jsonify({"error": "No food name or image provided."}),
+            400,
+        )
+
+    # 2. Look up nutrition per 100 g
+    macros_per100 = lookup_food(food_name)
+
+    # If CLIP name didn't match, try the top-3 candidates
+    if macros_per100 is None and classification:
+        for candidate in classification[1:]:
+            macros_per100 = lookup_food(candidate["name"])
+            if macros_per100 is not None:
+                food_name = candidate["name"]
+                break
+
+    if macros_per100 is None:
+        return (
+            jsonify({
+                "error": f"Nutrition data not found for '{food_name}'. "
+                         "Try a different name.",
+            }),
+            404,
+        )
+
+    # 3. Estimate weight from image (if not manually provided)
+    weight_g = None
+    if weight_str:
+        try:
+            weight_g = float(weight_str)
+        except (ValueError, TypeError):
+            return (
+                jsonify({"error": f"Invalid weight: '{weight_str}'"}),
+                400,
+            )
+
+    if weight_g is None and temp_paths:
+        # Use the Nutrition5k model to estimate weight
+        ckpt = (
+            _checkpoint if os.path.exists(_checkpoint) else None
+        )
+        model_pred = predict_meal(temp_paths, _cfg, checkpoint=ckpt)
+        weight_g = model_pred["weight_g"]
+        print(f"[SINGLE] model estimated weight: {weight_g}g")
+
+    if weight_g is None:
+        return (
+            jsonify({"error": "No weight provided and no image for estimation."}),
+            400,
+        )
+
+    weight_g = max(1.0, weight_g)
+
+    # 4. Calculate final macros = per_100g * weight / 100
+    scale = weight_g / 100.0
+    prediction = {
+        "weight_g": round(weight_g, 1),
+        "carbs_g": round(macros_per100["carbs_g"] * scale, 1),
+        "protein_g": round(macros_per100["protein_g"] * scale, 1),
+        "fat_g": round(macros_per100["fat_g"] * scale, 1),
+        "name": food_name,
+        "num_images": len(temp_paths),
+        "mode": "single",
+        "source": macros_per100.get("source", ""),
+        "usda_description": macros_per100.get(
+            "usda_description", food_name,
+        ),
+    }
+
+    # Include classification info for the frontend
+    if classification:
+        prediction["classification"] = [
+            {"name": c["name"], "confidence": c["confidence"]}
+            for c in classification[:3]
+        ]
+
+    return prediction
+
+
+def _analyse_composed(dish: dict, all_temp_paths: list) -> dict:
+    """Composed dish pipeline: Nutrition5k model direct regression."""
+    temp_paths = []
+    for f in dish["files"]:
+        path = _save_upload(f)
+        temp_paths.append(path)
+        all_temp_paths.append(path)
+
+    ckpt = (
+        _checkpoint if os.path.exists(_checkpoint) else None
+    )
+    prediction = predict_meal(temp_paths, _cfg, checkpoint=ckpt)
+    prediction.pop("bolus_recommendation", None)
+    prediction["name"] = dish["name"]
+    prediction["num_images"] = len(temp_paths)
+    prediction["mode"] = "composed"
+    return prediction

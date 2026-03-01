@@ -27,7 +27,7 @@ class MultiTaskLoss(nn.Module):
             raise ValueError(f"Unknown loss_type: {loss_type}")
 
         self.lambdas = torch.tensor([
-            cfg.get("lambda_weight", 1.0),
+            cfg.get("lambda_weight", 2.0),
             cfg.get("lambda_carbs", 2.0),
             cfg.get("lambda_protein", 1.0),
             cfg.get("lambda_fat", 1.0),
