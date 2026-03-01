@@ -579,12 +579,12 @@ The image uses **CPU-only PyTorch** (~1.5 GB) to keep cold starts fast on Cloud 
 
 ```bash
 # Start the API server
-docker run --rm -p 5000:8080 \
+docker run --rm -p 5001:8080 \
   -v ./models:/app/models \
   food-macro-api
 
 # Test it
-curl http://localhost:5000/health
+curl http://localhost:5001/health
 ```
 
 ### Run with Docker Compose
@@ -935,7 +935,7 @@ The system tracks bias separately and surfaces it in evaluation output.
 
 ## 11. Using the Product — Web UI Walkthrough
 
-The web interface is served by the Flask API at `http://localhost:5000`. It allows users to analyse up to 5 dishes per meal in two modes.
+The web interface is served by the Flask API at `http://localhost:5001`. It allows users to analyse up to 5 dishes per meal in two modes.
 
 ### Starting the Server
 
@@ -950,11 +950,11 @@ python api/app.py
 2. Resolves the checkpoint path: `models/best.pt`
 3. Calls `init_meal_blueprint(cfg, checkpoint)` to inject config into the meal router
 4. Registers the `meal_bp` blueprint (defined in `api/meal_router.py`)
-5. Flask starts serving the UI on port 5000
+5. Flask starts serving the UI on port 5001
 
 ### Step 1: Page Load
 
-When the user opens `http://localhost:5000`:
+When the user opens `http://localhost:5001`:
 
 1. **`GET /`** serves `ui/index.html` (`api/app.py:46-48`) — a minimal HTML shell with a header, dishes container, loading spinner, and results area.
 
@@ -1088,10 +1088,10 @@ The classifier uses **CLIP** (Contrastive Language-Image Pre-training) for zero-
 
 **Minimum confidence threshold** (`api/meal_router.py:296`):
 
-The top-1 prediction must reach **≥ 50% confidence** to be accepted. If it falls below this threshold, the API returns a `422` error asking the user to enter the food name manually. The error message includes the model's best guess and its confidence so the user can decide whether to use it:
+The top-1 prediction must reach **≥ 10% confidence** to be accepted. If it falls below this threshold, the API returns a `422` error asking the user to enter the food name manually. The error message includes the model's best guess and its confidence so the user can decide whether to use it:
 
 ```
-"Could not confidently classify food from image (need ≥50% confidence).
+"Could not confidently classify food from image (need ≥10% confidence).
  Best guess: 'baklava' (34% confidence). Please enter the food name manually."
 ```
 
@@ -1099,7 +1099,7 @@ This prevents low-confidence misclassifications from silently propagating incorr
 
 ### Step 2: Nutrition Lookup (`src/nutrition_lookup.py`)
 
-Once the food is identified (either by CLIP with ≥50% confidence or by the user manually), `lookup_food(name)` (`src/nutrition_lookup.py:94-107`) retrieves nutrition facts per 100g:
+Once the food is identified (either by CLIP with ≥10% confidence or by the user manually), `lookup_food(name)` (`src/nutrition_lookup.py:94-107`) retrieves nutrition facts per 100g:
 
 **Primary source — USDA FoodData Central API** (`src/nutrition_lookup.py:32-69`):
 - Queries `https://api.nal.usda.gov/fdc/v1/foods/search` (free, uses `DEMO_KEY` by default)
@@ -1252,14 +1252,14 @@ source venv/bin/activate
 python api/app.py
 ```
 
-Server starts at `http://localhost:5000`.
+Server starts at `http://localhost:5001`.
 
 ### Endpoints
 
 #### `GET /health` — Health Check
 
 ```bash
-curl http://localhost:5000/health
+curl http://localhost:5001/health
 ```
 
 Response:
@@ -1276,7 +1276,7 @@ Defined in `api/app.py:54-61`. Returns whether the model checkpoint exists and w
 #### `GET /api/foods` — Food Name Autocomplete
 
 ```bash
-curl http://localhost:5000/api/foods
+curl http://localhost:5001/api/foods
 ```
 
 Response:
@@ -1292,26 +1292,26 @@ The primary endpoint. Accepts up to 5 dishes, each in single or composed mode:
 
 ```bash
 # Single dish (auto-classify + auto-weight)
-curl -X POST http://localhost:5000/api/analyse_meal \
+curl -X POST http://localhost:5001/api/analyse_meal \
     -F "dish_0_mode=single" \
     -F "dish_0_images=@tomato.jpg"
 
 # Single dish with manual overrides
-curl -X POST http://localhost:5000/api/analyse_meal \
+curl -X POST http://localhost:5001/api/analyse_meal \
     -F "dish_0_mode=single" \
     -F "dish_0_images=@food.jpg" \
     -F "dish_0_name=chicken breast" \
     -F "dish_0_weight=200"
 
 # Composed dish
-curl -X POST http://localhost:5000/api/analyse_meal \
+curl -X POST http://localhost:5001/api/analyse_meal \
     -F "dish_0_mode=composed" \
     -F "dish_0_name=Pasta salad" \
     -F "dish_0_images=@front.jpg" \
     -F "dish_0_images=@top.jpg"
 
 # Mixed meal (single + composed)
-curl -X POST http://localhost:5000/api/analyse_meal \
+curl -X POST http://localhost:5001/api/analyse_meal \
     -F "dish_0_mode=single" \
     -F "dish_0_images=@apple.jpg" \
     -F "dish_1_mode=composed" \
@@ -1370,7 +1370,7 @@ Defined in `api/meal_router.py:154-270`.
 #### `POST /predict_meal_macros` — Legacy Single Prediction
 
 ```bash
-curl -X POST http://localhost:5000/predict_meal_macros \
+curl -X POST http://localhost:5001/predict_meal_macros \
     -F "images=@meal_photo.jpg"
 ```
 
@@ -1379,7 +1379,7 @@ Defined in `api/app.py:63-88`. Accepts 1-3 images, runs the composed pipeline di
 #### `POST /effective_carbs` — Recalculate Effective Carbs
 
 ```bash
-curl -X POST http://localhost:5000/effective_carbs \
+curl -X POST http://localhost:5001/effective_carbs \
     -H "Content-Type: application/json" \
     -d '{"carbs_g": 60, "protein_g": 25, "fat_g": 15}'
 ```
