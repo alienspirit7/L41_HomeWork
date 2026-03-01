@@ -138,7 +138,14 @@ def predict_meal(
         aggregated = preds.max(axis=0)
 
     # De-normalise
+    raw_aggregated = aggregated.copy()
     aggregated = _denormalize(aggregated, cfg)
+
+    import sys
+    print(f"[INFERENCE] checkpoint={checkpoint}", flush=True, file=sys.stderr)
+    print(f"[INFERENCE] target_mean={cfg.get('target_mean')}", flush=True, file=sys.stderr)
+    print(f"[INFERENCE] raw_output={raw_aggregated}", flush=True, file=sys.stderr)
+    print(f"[INFERENCE] denorm_output={aggregated}", flush=True, file=sys.stderr)
 
     weight, carbs, protein, fat = aggregated
     weight = max(0.0, float(weight))

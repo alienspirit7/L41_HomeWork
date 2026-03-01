@@ -2,11 +2,15 @@
 
 A deep learning pipeline that estimates **food weight**, **carbohydrates**, **protein**, **fat**, and **effective carbs** from meal photos — designed as decision-support for people with insulin-dependent diabetes.
 
-> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.3). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
+> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.4). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
 
 ---
 
 ## Changelog
+
+### v1.0.4
+- Fixed model checkpoint not being uploaded to Cloud Build (`.gitignore` excluded `models/*.pt` — added `.gcloudignore` to override this)
+- Fixed absolute path resolution for config and checkpoint in `app.py` (relative paths failed when Flask cwd ≠ repo root)
 
 ### v1.0.3
 - Fixed OOM crash on Cloud Run: increased required memory to 4Gi (EfficientNet-B2 + CLIP together use ~1.6 GB)

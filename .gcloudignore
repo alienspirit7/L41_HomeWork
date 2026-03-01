@@ -1,0 +1,15 @@
+# This file controls what gcloud builds submit uploads to Cloud Build.
+# It starts from .gitignore rules but explicitly un-ignores the model checkpoint.
+
+#!include:.gitignore
+
+# Re-include the model checkpoint (excluded by .gitignore but needed in the image)
+!models/best.pt
+
+# Exclude large dataset and local-only dirs
+venv/
+data/nutrition5k/
+runs/
+__pycache__/
+*.pyc
+.git/

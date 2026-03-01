@@ -30,8 +30,12 @@ UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 def create_app(config_path: str = "configs/default.yaml"):
     """Create and configure the Flask application."""
     app = Flask(__name__)
+    # Resolve paths relative to the repo root (parent of api/), not cwd
+    _root = Path(__file__).resolve().parent.parent
+    if not Path(config_path).is_absolute():
+        config_path = str(_root / config_path)
     cfg = load_config(config_path)
-    checkpoint = cfg.get("checkpoint_dir", "models") + "/best.pt"
+    checkpoint = str(_root / cfg.get("checkpoint_dir", "models") / "best.pt")
 
     # Register multi-dish blueprint
     init_meal_blueprint(cfg, checkpoint)
