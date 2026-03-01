@@ -63,4 +63,4 @@ save_best_only: true
 
 # ── Inference ─────────────────────────────────────────────────
 multi_image_strategy: mean   # mean | max — how to aggregate
-tta: true                    # test-time augmentation (5 views)
+tta: false                   # test-time augmentation disabled — too slow on CPU

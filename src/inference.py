@@ -18,13 +18,23 @@ from src.effective_carbs import (
 )
 
 
+_model_cache: dict = {}  # keyed by (checkpoint, device)
+
+
 def load_model(cfg: dict, checkpoint: str | None = None, device="cpu"):
     """Instantiate model and optionally load checkpoint.
+
+    Caches the loaded model so repeated calls within the same process
+    skip disk I/O and re-initialisation.
 
     Handles two checkpoint formats:
       - Dict with 'model_state_dict', 'target_mean', 'target_std'
       - Legacy plain state_dict
     """
+    cache_key = (checkpoint, device)
+    if cache_key in _model_cache:
+        return _model_cache[cache_key]
+
     model = FoodMacroModel(cfg)
     if checkpoint and Path(checkpoint).exists():
         ckpt = torch.load(checkpoint, map_location=device,
@@ -40,6 +50,7 @@ def load_model(cfg: dict, checkpoint: str | None = None, device="cpu"):
             model.load_state_dict(ckpt)
     model.to(device)
     model.eval()
+    _model_cache[cache_key] = model
     return model
 
 
