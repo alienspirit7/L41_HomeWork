@@ -18,14 +18,25 @@ RUN pip install --no-cache-dir --upgrade pip && \
         --extra-index-url https://download.pytorch.org/whl/cpu \
         -r requirements.txt
 
+# Pre-download model weights so the container never hits HuggingFace at runtime
+COPY src/ src/
+COPY configs/ configs/
+COPY data/nutrition_db.json data/nutrition_db.json
+RUN python -c "\
+import timm; timm.create_model('efficientnet_b2', pretrained=True, num_classes=0); \
+print('timm efficientnet_b2 cached'); \
+import open_clip; open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k'); \
+print('CLIP ViT-B-32 cached')"
+
 
 # ── Stage 2: Runtime ──────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
-# Copy the pre-built venv from the builder stage
+# Copy the pre-built venv (with cached model weights) from the builder stage
 COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /root/.cache /root/.cache
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
@@ -42,6 +53,9 @@ COPY models/       models/
 
 # Cloud Run injects PORT; default to 8080
 ENV PORT=8080
+ENV FLASK_DEBUG=0
+# Suppress PyTorch NNPACK warnings (unsupported on Cloud Run CPUs)
+ENV PYTORCH_DISABLE_NNPACK_LOGGING=1
 
 EXPOSE ${PORT}
 

@@ -374,11 +374,15 @@ async function analyseMeal() {
             body: formData,
         });
 
-        const data = await resp.json();
-
         if (!resp.ok) {
-            throw new Error(data.error || 'Analysis failed');
+            const ct = resp.headers.get('content-type') || '';
+            const msg = ct.includes('application/json')
+                ? (await resp.json()).error
+                : await resp.text();
+            throw new Error(`Server error ${resp.status}: ${msg || 'Analysis failed'}`);
         }
+
+        const data = await resp.json();
 
         // Collect preview URLs
         const previewUrls = dishIds.map(id => {
