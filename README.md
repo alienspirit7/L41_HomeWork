@@ -1088,10 +1088,10 @@ The classifier uses **CLIP** (Contrastive Language-Image Pre-training) for zero-
 
 **Minimum confidence threshold** (`api/meal_router.py:296`):
 
-The top-1 prediction must reach **≥ 50% confidence** to be accepted. If it falls below this threshold, the API returns a `422` error asking the user to enter the food name manually. The error message includes the model's best guess and its confidence so the user can decide whether to use it:
+The top-1 prediction must reach **≥ 10% confidence** to be accepted. If it falls below this threshold, the API returns a `422` error asking the user to enter the food name manually. The error message includes the model's best guess and its confidence so the user can decide whether to use it:
 
 ```
-"Could not confidently classify food from image (need ≥50% confidence).
+"Could not confidently classify food from image (need ≥10% confidence).
  Best guess: 'baklava' (34% confidence). Please enter the food name manually."
 ```
 
@@ -1099,7 +1099,7 @@ This prevents low-confidence misclassifications from silently propagating incorr
 
 ### Step 2: Nutrition Lookup (`src/nutrition_lookup.py`)
 
-Once the food is identified (either by CLIP with ≥50% confidence or by the user manually), `lookup_food(name)` (`src/nutrition_lookup.py:94-107`) retrieves nutrition facts per 100g:
+Once the food is identified (either by CLIP with ≥10% confidence or by the user manually), `lookup_food(name)` (`src/nutrition_lookup.py:94-107`) retrieves nutrition facts per 100g:
 
 **Primary source — USDA FoodData Central API** (`src/nutrition_lookup.py:32-69`):
 - Queries `https://api.nal.usda.gov/fdc/v1/foods/search` (free, uses `DEMO_KEY` by default)
