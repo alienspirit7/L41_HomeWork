@@ -104,6 +104,20 @@ body::before {
     margin-left: 0.4rem;
 }
 
+.medical-disclaimer {
+    display: inline-block;
+    background: #fff3cd;
+    color: #664d03;
+    border: 1.5px solid #ffc107;
+    border-radius: 10px;
+    padding: 0.65rem 1.1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.5;
+    max-width: 600px;
+    margin: 0.6rem auto 0.8rem;
+}
+
 .header p {
     color: var(--text-secondary);
     font-size: 0.95rem;

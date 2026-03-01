@@ -2,7 +2,25 @@
 
 A deep learning pipeline that estimates **food weight**, **carbohydrates**, **protein**, **fat**, and **effective carbs** from meal photos — designed as decision-support for people with insulin-dependent diabetes.
 
-> ⚠️ **Medical Disclaimer**: This is a research prototype (V1). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
+> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.2). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
+
+---
+
+## Changelog
+
+### v1.0.2
+- Added persistent medical disclaimer banner at the top of the UI
+- Model cache: inference now loads the model once per process (no per-request disk I/O)
+- Disabled test-time augmentation (TTA) at inference — reduces latency significantly on CPU
+- Fixed missing `nutrition_db.json` in Docker image (caused nutrition lookup failures in production)
+
+### v1.0.0
+- Initial release: multi-dish meal analyser with Single Item and Composed Dish pipelines
+- CLIP-based food classification for single items
+- USDA FoodData Central API + local DB nutrition lookup
+- Warsaw Method FPU combo bolus recommendation
+- Web UI with image upload, autocomplete, and results display
+- Multi-stage Dockerfile optimised for Google Cloud Run
 
 ---
 
@@ -600,22 +618,63 @@ docker compose run --rm train
 ### Deploy to Cloud Run
 
 ```bash
-# 1. Build & push to Google Artifact Registry
-export PROJECT_ID=your-gcp-project
+# 1. Set your project variables
+export PROJECT_ID=your-gcp-project-id
 export REGION=us-central1
+export REPO=your-artifact-registry-repo   # e.g. food-macro-app
 
-gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/docker/food-macro-api
+# 2. Enable required APIs (first time only)
+gcloud services enable run.googleapis.com \
+    artifactregistry.googleapis.com \
+    cloudbuild.googleapis.com \
+    storage.googleapis.com
 
-# 2. Deploy
+# 3. Create Artifact Registry repository (first time only)
+gcloud artifacts repositories create ${REPO} \
+    --repository-format=docker \
+    --location=${REGION}
+
+# 4. Build & push via Cloud Build (builds natively on linux/amd64 — no platform flag needed)
+gcloud builds submit \
+    --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/api:latest .
+
+# 5. Deploy
 gcloud run deploy food-macro-api \
-  --image ${REGION}-docker.pkg.dev/${PROJECT_ID}/docker/food-macro-api \
-  --region ${REGION} \
-  --platform managed \
-  --allow-unauthenticated \
-  --memory 2Gi
+    --image ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/api:latest \
+    --platform managed \
+    --region ${REGION} \
+    --port 8080 \
+    --memory 2Gi \
+    --cpu 2 \
+    --timeout 300 \
+    --allow-unauthenticated
 ```
 
-Cloud Run automatically sets the `PORT` environment variable — the API reads it at startup.
+> **Apple Silicon (M1/M2/M3) note**: Cloud Build runs on `linux/amd64` natively, so no `--platform` flag is needed. If building locally with Docker instead, add `--platform linux/amd64` to the `docker build` command.
+
+Cloud Run automatically injects the `PORT` environment variable — the API reads it at startup.
+
+#### Required IAM permissions (if Cloud Build fails with permission errors)
+
+```bash
+export SA=your-compute-service-account@developer.gserviceaccount.com
+
+# Allow pushing images to Artifact Registry
+gcloud artifacts repositories add-iam-policy-binding ${REPO} \
+    --location=${REGION} \
+    --member="serviceAccount:${SA}" \
+    --role="roles/artifactregistry.writer"
+
+# Allow writing build logs
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+    --member="serviceAccount:${SA}" \
+    --role="roles/logging.logWriter"
+
+# Allow reading from the Cloud Build GCS bucket
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+    --member="serviceAccount:${SA}" \
+    --role="roles/storage.objectAdmin"
+```
 
 ### Docker Architecture
 
