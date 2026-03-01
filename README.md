@@ -2,11 +2,18 @@
 
 A deep learning pipeline that estimates **food weight**, **carbohydrates**, **protein**, **fat**, and **effective carbs** from meal photos — designed as decision-support for people with insulin-dependent diabetes.
 
-> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.2). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
+> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.3). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
 
 ---
 
 ## Changelog
+
+### v1.0.3
+- Fixed OOM crash on Cloud Run: increased required memory to 4Gi (EfficientNet-B2 + CLIP together use ~1.6 GB)
+- Fixed 1g weight prediction bug: model cache now re-injects `target_mean`/`target_std` into every request's config
+- Baked HuggingFace model weights (EfficientNet-B2, CLIP ViT-B-32) into Docker image — eliminates cold-start 503s from HuggingFace rate limiting
+- Disabled Flask debug/reloader in production (`FLASK_DEBUG=0`)
+- Fixed frontend swallowing non-JSON 503 errors as "Unexpected token S"
 
 ### v1.0.2
 - Added persistent medical disclaimer banner at the top of the UI

@@ -18,7 +18,8 @@ from src.effective_carbs import (
 )
 
 
-_model_cache: dict = {}  # keyed by (checkpoint, device)
+# keyed by (checkpoint, device) → (model, target_mean, target_std)
+_model_cache: dict = {}
 
 
 def load_model(cfg: dict, checkpoint: str | None = None, device="cpu"):
@@ -27,30 +28,41 @@ def load_model(cfg: dict, checkpoint: str | None = None, device="cpu"):
     Caches the loaded model so repeated calls within the same process
     skip disk I/O and re-initialisation.
 
+    Always re-injects target_mean/target_std from the cache into cfg
+    so denormalisation works correctly on every call.
+
     Handles two checkpoint formats:
       - Dict with 'model_state_dict', 'target_mean', 'target_std'
       - Legacy plain state_dict
     """
     cache_key = (checkpoint, device)
     if cache_key in _model_cache:
-        return _model_cache[cache_key]
+        model, target_mean, target_std = _model_cache[cache_key]
+        if target_mean is not None:
+            cfg["target_mean"] = target_mean
+        if target_std is not None:
+            cfg["target_std"] = target_std
+        return model
 
     model = FoodMacroModel(cfg)
+    target_mean = None
+    target_std = None
     if checkpoint and Path(checkpoint).exists():
         ckpt = torch.load(checkpoint, map_location=device,
                           weights_only=False)
         if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
             model.load_state_dict(ckpt["model_state_dict"])
-            # Inject target stats into config for de-normalisation
-            if "target_mean" in ckpt:
-                cfg["target_mean"] = ckpt["target_mean"]
-            if "target_std" in ckpt:
-                cfg["target_std"] = ckpt["target_std"]
+            target_mean = ckpt.get("target_mean")
+            target_std = ckpt.get("target_std")
+            if target_mean is not None:
+                cfg["target_mean"] = target_mean
+            if target_std is not None:
+                cfg["target_std"] = target_std
         else:
             model.load_state_dict(ckpt)
     model.to(device)
     model.eval()
-    _model_cache[cache_key] = model
+    _model_cache[cache_key] = (model, target_mean, target_std)
     return model
 
 
