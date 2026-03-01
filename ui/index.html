@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meal Analyser — Macro Estimation &amp; Bolus Recommendation</title>
+    <meta name="color-scheme" content="dark light">
     <meta name="description"
         content="Upload meal photos to estimate macros and get insulin pump combo bolus recommendations using the Warsaw Method.">
     <link rel="stylesheet" href="/ui/styles.css">
@@ -14,30 +15,37 @@
 
 <body>
     <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <h1>🍽️ Meal Analyser <span class="version-badge">v1.0.4</span></h1>
-            <div class="medical-disclaimer">
-                ⚠️ This is a decision-support tool, not medical advice.
-                Always verify with your endocrinologist.
-                Consider IOB (insulin on board) and activity level before dosing.
-            </div>
-            <p>Upload photos of your dishes to estimate macros and get a combo bolus recommendation</p>
-        </header>
 
-        <!-- Error Message -->
+        <!-- Page header: title + theme toggle -->
+        <div class="page-header">
+            <div>
+                <div class="title-row">
+                    <h1>🍽️ Meal Analyser</h1>
+                    <span class="version-badge">v1.0.5</span>
+                </div>
+                <p class="header-sub">Upload photos to estimate macros and get a combo bolus recommendation</p>
+            </div>
+            <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                <span id="themeIcon">☀️</span>
+                <span class="theme-label" id="themeLabel">Light mode</span>
+            </button>
+        </div>
+
+        <!-- Medical disclaimer -->
+        <div class="medical-disclaimer">
+            ⚠️ Decision-support tool — not medical advice. Always verify with your endocrinologist.
+            Consider IOB and activity level before dosing.
+        </div>
+
+        <!-- Error -->
         <div class="error-message" id="errorMsg"></div>
 
-        <!-- Setup Section (dishes + buttons) -->
+        <!-- Setup -->
         <div id="setupSection">
             <div class="dishes-container" id="dishesContainer"></div>
             <div class="actions">
-                <button class="btn btn-secondary" id="addDishBtn">
-                    + Add Dish
-                </button>
-                <button class="btn btn-primary" id="analyseBtn" disabled>
-                    Analyse Meal
-                </button>
+                <button class="btn btn-secondary" id="addDishBtn">+ Add Dish</button>
+                <button class="btn btn-primary" id="analyseBtn" disabled>Analyse Meal</button>
             </div>
         </div>
 
@@ -56,10 +64,11 @@
             <div id="mealTotals"></div>
         </div>
 
-        <!-- New Analysis Button (shown after results) -->
+        <!-- New Analysis -->
         <button class="btn btn-primary new-analysis-btn hidden" id="newAnalysisBtn">
             🔄 New Analysis
         </button>
+
     </div>
 
     <script src="/ui/app.js"></script>

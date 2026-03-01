@@ -16,8 +16,29 @@ let dishData = {};
 
 let foodList = [];  // cached for autocomplete
 
+/* ── Theme ────────────────────────────────────────── */
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    const isDark = theme === 'dark';
+    document.getElementById('themeIcon').textContent = isDark ? '☀️' : '🌙';
+    document.getElementById('themeLabel').textContent = isDark ? 'Light mode' : 'Dark mode';
+    document.getElementById('themeToggle').title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+    localStorage.setItem('theme', theme);
+}
+
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
 /* ── Initialise ───────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
+    // Apply saved theme (default: dark)
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    applyTheme(savedTheme);
+    document.getElementById('themeToggle')
+        .addEventListener('click', toggleTheme);
+
     addDish();
     document.getElementById('addDishBtn')
         .addEventListener('click', addDish);
@@ -77,9 +98,6 @@ function addDish() {
                        accept="image/*" hidden
                        onchange="handleSingleFile(${id}, this.files)">
             </div>
-            <p class="single-hint">
-                Upload a photo — the food will be auto-identified and weighed.
-            </p>
             <div class="single-overrides">
                 <input type="text" class="dish-name-input"
                        id="nameInput-${id}"
@@ -89,14 +107,11 @@ function addDish() {
                 <datalist id="foodSuggestions-${id}">
                     ${foodList.map(f => `<option value="${f}">`).join('')}
                 </datalist>
-                <div class="weight-input-row">
-                    <input type="number" class="weight-input"
-                           id="weightInput-${id}"
-                           placeholder="Override weight (optional)"
-                           min="1" step="1"
-                           oninput="dishData[${id}].weight = this.value">
-                    <span class="weight-unit">g</span>
-                </div>
+                <input type="number" class="dish-name-input"
+                       id="weightInput-${id}"
+                       placeholder="Override food weight, g (optional)"
+                       min="1" step="1"
+                       oninput="dishData[${id}].weight = this.value">
             </div>
         </div>
 

@@ -306,7 +306,7 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
                     if top else "")
             return (
                 jsonify({"error": f"Dish {dish_num}: Could not confidently "
-                                  "classify food from image (need ≥50% "
+                                  "classify food from image (need ≥10% "
                                   f"confidence).{hint} Please enter the food "
                                   "name manually."}),
                 422,

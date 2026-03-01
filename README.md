@@ -2,11 +2,18 @@
 
 A deep learning pipeline that estimates **food weight**, **carbohydrates**, **protein**, **fat**, and **effective carbs** from meal photos — designed as decision-support for people with insulin-dependent diabetes.
 
-> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.4). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
+> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.5). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
 
 ---
 
 ## Changelog
+
+### v1.0.5
+- Significantly improved UI design with full responsive layout (mobile, tablet, desktop)
+- Added dark/light mode toggle with `localStorage` persistence (default: dark)
+- Light mode: clean light theme with matching colour palette
+- Improved typography, spacing, and component polish across all screen sizes
+- Two responsive breakpoints (720 px and 520 px) with progressive layout adjustments
 
 ### v1.0.4
 - Fixed model checkpoint not being uploaded to Cloud Build (`.gitignore` excluded `models/*.pt` — added `.gcloudignore` to override this)
