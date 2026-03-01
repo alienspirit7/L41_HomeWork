@@ -33,6 +33,7 @@ COPY src/          src/
 COPY api/          api/
 COPY scripts/      scripts/
 COPY configs/      configs/
+COPY ui/           ui/
 COPY data/sample/  data/sample/
 
 # Copy model checkpoint (if it exists at build time)

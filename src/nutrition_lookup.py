@@ -94,17 +94,18 @@ def _local_search(query: str) -> dict | None:
 def lookup_food(name: str) -> dict | None:
     """Look up nutrition per 100g for a food item.
 
-    Tries USDA API first, falls back to local database.
+    Tries local database first (fast, reliable), then USDA API for
+    items not in the local DB.
     Returns dict with carbs_g, protein_g, fat_g, calories, source
     or None if not found.
     """
-    # Try USDA API first
-    result = _usda_search(name)
+    # Try local database first (fast, no network dependency)
+    result = _local_search(name)
     if result:
         return result
 
-    # Fallback to local database
-    return _local_search(name)
+    # Fallback to USDA API for items not in local DB
+    return _usda_search(name)
 
 
 def calculate_macros(name: str, weight_g: float) -> dict | None:

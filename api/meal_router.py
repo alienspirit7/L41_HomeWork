@@ -229,9 +229,9 @@ def analyse_meal():
     all_temp_paths = []
 
     try:
-        for dish in dishes:
+        for dish_num, dish in enumerate(dishes, start=1):
             if dish["mode"] == "single":
-                prediction = _analyse_single(dish, all_temp_paths)
+                prediction = _analyse_single(dish, all_temp_paths, dish_num)
                 if isinstance(prediction, tuple):
                     # Error response
                     return prediction
@@ -272,7 +272,7 @@ def analyse_meal():
 
 # ── Per-dish analysis helpers ─────────────────────────────────
 
-def _analyse_single(dish: dict, all_temp_paths: list) -> dict | tuple:
+def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict | tuple:
     """Single-item pipeline: classify → lookup → estimate weight → calc.
 
     Returns a prediction dict or a (jsonify(error), status) tuple.
@@ -291,7 +291,7 @@ def _analyse_single(dish: dict, all_temp_paths: list) -> dict | tuple:
         all_temp_paths.append(path)
 
     # 1. Classify food name from image (if not manually provided)
-    MIN_CLIP_CONFIDENCE = 0.50
+    MIN_CLIP_CONFIDENCE = 0.10
 
     if not food_name and temp_paths:
         classification = classify_food(temp_paths[0], top_k=3)
@@ -305,16 +305,16 @@ def _analyse_single(dish: dict, all_temp_paths: list) -> dict | tuple:
                     f"({top['confidence']:.0%} confidence)."
                     if top else "")
             return (
-                jsonify({"error": "Could not confidently classify food from "
-                                  "image (need ≥50% confidence)."
-                                  f"{hint} Please enter the food name "
-                                  "manually."}),
+                jsonify({"error": f"Dish {dish_num}: Could not confidently "
+                                  "classify food from image (need ≥50% "
+                                  f"confidence).{hint} Please enter the food "
+                                  "name manually."}),
                 422,
             )
 
     if not food_name:
         return (
-            jsonify({"error": "No food name or image provided."}),
+            jsonify({"error": f"Dish {dish_num}: No food name or image provided."}),
             400,
         )
 
@@ -332,8 +332,8 @@ def _analyse_single(dish: dict, all_temp_paths: list) -> dict | tuple:
     if macros_per100 is None:
         return (
             jsonify({
-                "error": f"Nutrition data not found for '{food_name}'. "
-                         "Try a different name.",
+                "error": f"Dish {dish_num}: Nutrition data not found for "
+                         f"'{food_name}'. Try a different name.",
             }),
             404,
         )
