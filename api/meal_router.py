@@ -276,9 +276,9 @@ def analyse_meal():
 def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict | tuple:
     """Single-item pipeline: classify → lookup → estimate weight → calc.
 
-    Runs BOTH ResNet-50 (ImageNet) and CLIP (ingredient-only labels)
-    and picks whichever has higher confidence.  This covers each
-    model's blind spots (e.g. ImageNet has no tomato class).
+    Primary classifier: ViT fine-tuned on Food-101 (nateraw/food, 101 classes).
+    Fallback: CLIP zero-shot ingredient classifier — only invoked when the ViT
+    returns no DB-mappable result above MIN_CONFIDENCE.
 
     Returns a prediction dict or a (jsonify(error), status) tuple.
     """
@@ -300,34 +300,31 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
     MIN_CONFIDENCE = 0.03
 
     if not food_name and temp_paths:
-        # Run BOTH classifiers and pick the best answer.
-        # ResNet excels at ImageNet foods (orange, banana, broccoli).
-        # CLIP excels at items not in ImageNet (tomato, avocado, egg).
-        resnet_results = classify_single_food(temp_paths[0], top_k=5)
-        clip_results   = classify_ingredient(temp_paths[0], top_k=5)
+        # Primary: ViT fine-tuned on Food-101 (101 food-specific classes).
+        # Fallback: CLIP zero-shot ingredient classifier — only runs when ViT
+        # returns nothing above MIN_CONFIDENCE (saves ~200–400 ms per request).
+        vit_results = classify_single_food(temp_paths[0], top_k=5)
+        vit_top = vit_results[0] if vit_results else None
+        vit_conf = vit_top["confidence"] if vit_top else 0
 
-        resnet_top = resnet_results[0] if resnet_results else None
-        clip_top   = clip_results[0]   if clip_results   else None
+        if vit_conf >= MIN_CONFIDENCE:
+            food_name = vit_top["name"]
+            classification = vit_results
+            classifier_used = "vit"
+            print(f"[SINGLE] VIT won: {food_name} ({vit_conf:.1%})")
+        else:
+            # ViT not confident — try CLIP
+            clip_results = classify_ingredient(temp_paths[0], top_k=5)
+            clip_top = clip_results[0] if clip_results else None
+            clip_conf = clip_top["confidence"] if clip_top else 0
 
-        resnet_conf = resnet_top["confidence"] if resnet_top else 0
-        clip_conf   = clip_top["confidence"]   if clip_top   else 0
-
-        if resnet_conf >= clip_conf and resnet_conf >= MIN_CONFIDENCE:
-            food_name = resnet_top["name"]
-            classification = resnet_results
-            classifier_used = "resnet"
-        elif clip_conf >= MIN_CONFIDENCE:
-            food_name = clip_top["name"]
-            classification = clip_results
-            classifier_used = "clip"
-
-        if food_name:
-            print(f"[SINGLE] {classifier_used.upper()} won: {food_name} "
-                  f"({classification[0]['confidence']:.1%})"
-                  f"  [ResNet: {resnet_top['name'] if resnet_top else '-'}"
-                  f" {resnet_conf:.1%},"
-                  f" CLIP: {clip_top['name'] if clip_top else '-'}"
-                  f" {clip_conf:.1%}]")
+            if clip_conf >= MIN_CONFIDENCE:
+                food_name = clip_top["name"]
+                classification = clip_results
+                classifier_used = "clip"
+                print(f"[SINGLE] CLIP fallback: {food_name} ({clip_conf:.1%})"
+                      f"  [ViT: {vit_top['name'] if vit_top else '-'}"
+                      f" {vit_conf:.1%}]")
 
         if not food_name:
             top = classification[0] if classification else None
