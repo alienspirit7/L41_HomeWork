@@ -27,8 +27,8 @@ import timm; timm.create_model('efficientnet_b2', pretrained=True, num_classes=0
 print('timm efficientnet_b2 cached'); \
 import open_clip; open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k'); \
 print('CLIP ViT-B-32 cached'); \
-import torchvision.models as m; m.resnet50(weights=m.ResNet50_Weights.DEFAULT); \
-print('ResNet-50 cached')"
+from transformers import pipeline; pipeline('image-classification', model='nateraw/food', top_k=None); \
+print('nateraw/food ViT cached')"
 
 
 # ── Stage 2: Runtime ──────────────────────────────────────────

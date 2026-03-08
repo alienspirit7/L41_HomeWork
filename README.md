@@ -2,11 +2,17 @@
 
 A deep learning pipeline that estimates **food weight**, **carbohydrates**, **protein**, **fat**, and **effective carbs** from meal photos — designed as decision-support for people with insulin-dependent diabetes.
 
-> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.6). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
+> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.7). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
 
 ---
 
 ## Changelog
+
+### v1.0.7
+- Replaced ResNet-50 (ImageNet) primary classifier with **`nateraw/food`** — a ViT fine-tuned on Food-101 (101 food-specific classes vs. ~21 mapped ImageNet classes)
+- `src/imagenet_classifier.py` now uses `transformers.pipeline("image-classification")` — zero training required, drop-in swap
+- Full `FOOD101_TO_DB` mapping: 49 of 101 Food-101 classes mapped to local nutrition DB (covers dishes like `steak`, `grilled_salmon`, `hummus`, `omelette`, `pork_chop`, `tuna_tartare` that ResNet missed)
+- Added `transformers>=4.40.0` to `requirements.txt`; Dockerfile pre-caches `nateraw/food` weights at build time
 
 ### v1.0.6
 - Replaced CLIP with pre-trained **ResNet-50 (ImageNet-1K)** as the primary classifier for single food items — directly recognises fruits, vegetables and common foods (orange, banana, tomato, broccoli, etc.)
@@ -62,7 +68,7 @@ A deep learning pipeline that estimates **food weight**, **carbohydrates**, **pr
 9. [Training the Model — Step by Step](#9-training-the-model--step-by-step)
 10. [Evaluating the Model](#10-evaluating-the-model)
 11. [Using the Product — Web UI Walkthrough](#11-using-the-product--web-ui-walkthrough)
-12. [Single Dish Pipeline — CLIP Classification](#12-single-dish-pipeline--clip-classification)
+12. [Single Dish Pipeline — Food-101 Classification](#12-single-dish-pipeline--food-101-classification)
 13. [Composed Dish Pipeline — Direct Regression](#13-composed-dish-pipeline--direct-regression)
 14. [REST API Reference](#14-rest-api-reference)
 15. [Bolus Recommendation — The Warsaw Method (FPU)](#15-bolus-recommendation--the-warsaw-method-fpu)
@@ -118,7 +124,7 @@ L41_HomeWork/
 │   ├── inference.py               # Prediction pipeline (1-3 images)
 │   ├── effective_carbs.py         # Effective carbs formula engine
 │   ├── food_classifier.py         # CLIP zero-shot food classification
-│   ├── imagenet_classifier.py     # ResNet-50 (ImageNet) single-food classifier
+│   ├── imagenet_classifier.py     # ViT Food-101 (nateraw/food) single-food classifier
 │   ├── nutrition_lookup.py        # USDA API + local JSON nutrition DB
 │   └── personalization.py         # User meal store + calibration layer
 │
@@ -219,7 +225,7 @@ graph TD
     A --> B{"Mode?"}
 
     subgraph SinglePipeline ["Single Item Pipeline"]
-        B -->|single| C["ResNet-50 (ImageNet)<br/>Primary classifier<br/>(src/imagenet_classifier.py)"]
+        B -->|single| C["ViT Food-101 (nateraw/food)<br/>Primary classifier<br/>(src/imagenet_classifier.py)"]
         C -->|no food match| C2["CLIP ViT-B-32<br/>Ingredient-only fallback<br/>(src/food_classifier.py)"]
         C -->|food found| D["Food name<br/>e.g. 'orange'"]
         C2 --> D
@@ -605,6 +611,7 @@ print('✅ Installation verified. Backbone:', cfg['backbone'])
 | `matplotlib` | ≥3.8.0 | Plotting and visualisation |
 | `numpy` | ≥1.26.0 | Numerical computing |
 | `open-clip-torch` | ≥2.24.0 | CLIP zero-shot food classification (ViT-B-32) |
+| `transformers` | ≥4.40.0 | HuggingFace model hub — loads `nateraw/food` ViT classifier |
 | `pillow-heif` | ≥0.16.0 | HEIC/HEIF image support (iPhone photos) |
 
 ---
@@ -1143,50 +1150,44 @@ Clicking "New Analysis" calls `resetAll()` (`ui/app.js:317-326`), which clears a
 
 ---
 
-## 12. Single Dish Pipeline — CLIP Classification
+## 12. Single Dish Pipeline — Food-101 Classification
 
 When a dish is set to **single mode**, the backend runs a 4-step pipeline that combines image classification, nutrition database lookup, and weight estimation.
 
-### Step 1: Image Classification (`src/food_classifier.py`)
+### Step 1: Image Classification (`src/imagenet_classifier.py`)
 
-The classifier uses **CLIP** (Contrastive Language-Image Pre-training) for zero-shot food identification. CLIP can classify images against arbitrary text labels without any food-specific training.
+The primary classifier uses **`nateraw/food`** — a Vision Transformer (ViT-base-patch16-224) fine-tuned on the Food-101 dataset. With 101 food-specific classes it vastly outperforms the previous ResNet-50 (ImageNet) approach, which could only map ~21 food classes.
 
-**Model**: ViT-B-32 pretrained on LAION-2B (~400M image-text pairs)
+**Model**: `nateraw/food` — ViT-base-patch16-224 fine-tuned on Food-101 (~90k images, 101 classes)
 
-**How it works** (`src/food_classifier.py:55-88`):
+**How it works** (`src/imagenet_classifier.py`):
 
-1. On first call, `_load_model()` loads the CLIP model and tokeniser
-2. Builds a combined label set from two sources:
-   - **Food-101 labels** — 101 dish categories (pizza, sushi, hamburger, etc.) defined in `FOOD_101_LABELS` (`src/food_classifier.py:16-45`)
-   - **Local nutrition DB keys** — ~80 ingredient names (tomato, chicken breast, rice, etc.) loaded from `data/nutrition_db.json`
-3. Pre-computes text embeddings for all ~170 labels using the prompt template `"a photo of {name}, a type of food"`
-4. Caches everything in module globals for subsequent calls
+1. On first call, `_load_model()` initialises a `transformers.pipeline("image-classification")` pointing to `nateraw/food`
+2. The pipeline returns softmax probabilities for all 101 Food-101 classes
+3. Results are filtered through `FOOD101_TO_DB` — a mapping of all 101 Food-101 labels to local nutrition DB keys (49 classes map; 52 dish categories with no DB equivalent are skipped)
+4. The singleton pipeline is cached in a module global for subsequent calls
 
-**Classification** (`src/food_classifier.py:91-120`):
+**Classification** (`src/imagenet_classifier.py:classify_single_food`):
 
-1. Opens the image and applies CLIP's preprocessing (resize, centre crop, normalise)
-2. Encodes the image into a 512-dim feature vector
-3. Computes cosine similarity against all pre-computed text embeddings
-4. Applies softmax to get probability distribution
-5. Returns top-3 predictions with confidence scores:
+1. Opens the image with PIL and passes it directly to the pipeline
+2. Returns top-k results filtered to DB-mappable classes:
    ```python
-   [{"name": "tomato", "confidence": 0.72}, {"name": "red pepper", "confidence": 0.11}, ...]
+   [{"name": "salmon", "confidence": 0.87, "food101_class": "grilled_salmon"}, ...]
    ```
 
-**Minimum confidence threshold** (`api/meal_router.py:296`):
+**Fallback — CLIP ingredient classifier** (`src/food_classifier.py:classify_ingredient`):
 
-The top-1 prediction must reach **≥ 10% confidence** to be accepted. If it falls below this threshold, the API returns a `422` error asking the user to enter the food name manually. The error message includes the model's best guess and its confidence so the user can decide whether to use it:
+If the ViT primary classifier returns no DB-mappable class above the minimum confidence, the pipeline falls back to CLIP ViT-B-32 with ingredient-only labels (~100 DB items) and prompt ensembling (3 templates). The higher-confidence answer wins.
 
-```
-"Could not confidently classify food from image (need ≥10% confidence).
- Best guess: 'baklava' (34% confidence). Please enter the food name manually."
-```
+**Minimum confidence threshold** (`api/meal_router.py:300`):
+
+The top-1 prediction must reach **≥ 3% confidence** to be accepted. If both classifiers fall below this threshold, the API returns a `422` error asking the user to enter the food name manually.
 
 This prevents low-confidence misclassifications from silently propagating incorrect nutrition data through the rest of the pipeline.
 
 ### Step 2: Nutrition Lookup (`src/nutrition_lookup.py`)
 
-Once the food is identified (either by CLIP with ≥10% confidence or by the user manually), `lookup_food(name)` (`src/nutrition_lookup.py:94-107`) retrieves nutrition facts per 100g:
+Once the food is identified (either by the classifier or by the user manually), `lookup_food(name)` (`src/nutrition_lookup.py:94-107`) retrieves nutrition facts per 100g:
 
 **Primary source — USDA FoodData Central API** (`src/nutrition_lookup.py:32-69`):
 - Queries `https://api.nal.usda.gov/fdc/v1/foods/search` (free, uses `DEMO_KEY` by default)
@@ -1200,7 +1201,7 @@ Once the food is identified (either by CLIP with ≥10% confidence or by the use
 - Falls back to fuzzy matching via `difflib.get_close_matches(cutoff=0.6)`
 - Returns source as `"local_db"`
 
-**Fallback across CLIP candidates** — if the top-1 CLIP prediction doesn't match any nutrition source, the router tries the top-3 candidates (`api/meal_router.py:317-323`).
+**Fallback across candidates** — if the top-1 prediction doesn't match any nutrition source, the router tries the top-3 candidates (`api/meal_router.py:317-323`).
 
 ### Step 3: Weight Estimation (`src/inference.py`)
 
@@ -1238,7 +1239,7 @@ The final macros are: `nutrition_per_100g * estimated_weight / 100`.
 ### Optional Manual Overrides
 
 The user can override either auto-detected value:
-- **Food name override** — skips CLIP classification, uses the typed name for USDA lookup
+- **Food name override** — skips image classification, uses the typed name for USDA lookup
 - **Weight override** — skips model weight estimation, uses the typed weight in grams
 
 This is handled in `_analyse_single()` (`api/meal_router.py:275-384`) by checking whether `food_name` and `weight_str` are non-empty before running the respective auto-detection step.

@@ -1,124 +1,185 @@
 """
-Single-food classification using pre-trained ResNet-50 (ImageNet-1K).
+Single-food classification using nateraw/food (ViT fine-tuned on Food-101).
 
-ImageNet contains ~30 direct food classes (fruits, vegetables, etc.)
-which are mapped to local nutrition DB keys.  Much more reliable than
-CLIP for raw single ingredients because the model was explicitly
-trained on these classes.
+Food-101 has 101 food-specific classes, vastly outperforming the ~21 food
+classes available in ImageNet/ResNet-50.  This is a zero-training drop-in
+replacement — we just swap the model and remap class labels.
 """
 
-import json
-import os
-
-import torch
-from torchvision import models, transforms
 from PIL import Image
+from transformers import pipeline
 
-# ── ImageNet class index → local nutrition DB name ──────────────
-# Only classes that map to a single-ingredient item in our DB.
-IMAGENET_TO_DB = {
-    924: "guacamole",
-    928: "ice cream",
-    933: "hamburger",          # cheeseburger → close
-    935: "potato",             # mashed potato
-    936: "cabbage",            # head cabbage
-    937: "broccoli",
-    938: "cauliflower",
-    939: "zucchini",           # zucchini / courgette
-    943: "cucumber",
-    945: "green pepper",       # bell pepper → green pepper
-    947: "mushroom",
-    948: "apple",              # Granny Smith
-    949: "strawberry",
-    950: "orange",
-    951: "lemon",
-    952: "fig",
-    953: "pineapple",
-    954: "banana",
-    957: "pomegranate",
-    959: "pasta cooked",       # carbonara → pasta
-    987: "corn",
+# ── Food-101 label → local nutrition DB key ──────────────────────────────────
+# Full 101-class mapping; None means no matching entry in our nutrition DB.
+FOOD101_TO_DB: dict[str, str | None] = {
+    "apple_pie":              None,
+    "baby_back_ribs":         None,
+    "baklava":                None,
+    "beef_carpaccio":         "beef steak",
+    "beef_tartare":           "beef steak",
+    "beet_salad":             "beet",
+    "beignets":               None,
+    "bibimbap":               "rice cooked",
+    "bread_pudding":          "white bread",
+    "breakfast_burrito":      None,
+    "bruschetta":             "white bread",
+    "caesar_salad":           "lettuce",
+    "cannoli":                None,
+    "caprese_salad":          "tomato",
+    "carrot_cake":            "carrot",
+    "ceviche":                "shrimp",
+    "cheesecake":             "cream cheese",
+    "cheese_plate":           "cheddar cheese",
+    "chicken_curry":          "chicken breast",
+    "chicken_quesadilla":     "chicken breast",
+    "chicken_wings":          "chicken thigh",
+    "chocolate_cake":         None,
+    "chocolate_mousse":       None,
+    "churros":                None,
+    "clam_chowder":           None,
+    "club_sandwich":          "white bread",
+    "crab_cakes":             None,
+    "creme_brulee":           None,
+    "croque_madame":          "white bread",
+    "cup_cakes":              None,
+    "deviled_eggs":           "egg",
+    "donuts":                 None,
+    "dumplings":              None,
+    "edamame":                "pea",
+    "eggs_benedict":          "egg",
+    "escargots":              None,
+    "falafel":                "chickpea",
+    "filet_mignon":           "beef steak",
+    "fish_and_chips":         "tilapia",
+    "foie_gras":              None,
+    "french_fries":           "potato",
+    "french_onion_soup":      "onion",
+    "french_toast":           "white bread",
+    "fried_calamari":         None,
+    "fried_rice":             "rice cooked",
+    "frozen_yogurt":          "yogurt",
+    "garlic_bread":           "white bread",
+    "gnocchi":                "potato",
+    "greek_salad":            "tomato",
+    "grilled_cheese_sandwich": "cheddar cheese",
+    "grilled_salmon":         "salmon",
+    "guacamole":              "avocado",
+    "gyoza":                  None,
+    "hamburger":              "ground beef",
+    "hot_and_sour_soup":      None,
+    "hot_dog":                "sausage",
+    "huevos_rancheros":       "egg",
+    "hummus":                 "hummus",
+    "ice_cream":              None,
+    "lasagna":                "pasta cooked",
+    "lobster_bisque":         None,
+    "lobster_roll_sandwich":  None,
+    "macaroni_and_cheese":    "pasta cooked",
+    "macarons":               None,
+    "miso_soup":              "tofu",
+    "mussels":                None,
+    "nachos":                 None,
+    "omelette":               "egg",
+    "onion_rings":            "onion",
+    "oysters":                None,
+    "pad_thai":               "pasta cooked",
+    "paella":                 "rice cooked",
+    "pancakes":               None,
+    "panna_cotta":            None,
+    "peking_duck":            None,
+    "pho":                    None,
+    "pizza":                  None,
+    "pork_chop":              "pork chop",
+    "poutine":                "potato",
+    "prime_rib":              "beef steak",
+    "pulled_pork_sandwich":   "pork chop",
+    "ramen":                  None,
+    "ravioli":                "pasta cooked",
+    "red_velvet_cake":        None,
+    "risotto":                "rice cooked",
+    "samosa":                 None,
+    "sashimi":                "salmon",
+    "scallops":               None,
+    "seaweed_salad":          None,
+    "shrimp_and_grits":       "shrimp",
+    "spaghetti_bolognese":    "pasta cooked",
+    "spaghetti_carbonara":    "pasta cooked",
+    "spring_rolls":           None,
+    "steak":                  "beef steak",
+    "strawberry_shortcake":   "strawberry",
+    "sushi":                  "rice cooked",
+    "tacos":                  None,
+    "takoyaki":               None,
+    "tiramisu":               None,
+    "tuna_tartare":           "tuna",
+    "waffles":                None,
 }
 
-# ── Singleton model ─────────────────────────────────────────────
-_model = None
-_preprocess = None
-_categories = None
+# ── Singleton pipeline ────────────────────────────────────────────────────────
+_pipe = None
 
 
 def _load_model():
-    """Load pre-trained ResNet-50 with ImageNet-1K weights (lazy)."""
-    global _model, _preprocess, _categories
-
-    if _model is not None:
+    global _pipe
+    if _pipe is not None:
         return
 
-    print("[ResNet] loading ResNet-50 (ImageNet-1K) …")
-    weights = models.ResNet50_Weights.DEFAULT
-    _model = models.resnet50(weights=weights)
-    _model.eval()
+    print("[ViT-Food101] loading nateraw/food …")
+    _pipe = pipeline(
+        "image-classification",
+        model="nateraw/food",
+        top_k=None,       # return all 101 scores
+    )
+    mapped = sum(1 for v in FOOD101_TO_DB.values() if v is not None)
+    print(f"[ViT-Food101] ready — {mapped} of 101 classes mapped to nutrition DB")
 
-    _preprocess = weights.transforms()
-    _categories = weights.meta["categories"]
 
-    print(f"[ResNet] ready — {len(IMAGENET_TO_DB)} food classes mapped")
+def classify_single_food(image_path: str, top_k: int = 5) -> list[dict]:
+    """Classify a single food item using nateraw/food (ViT, Food-101).
 
-
-def classify_single_food(
-    image_path: str,
-    top_k: int = 5,
-) -> list[dict]:
-    """Classify a single food item using pre-trained ResNet-50.
-
-    Returns a list of ``{name, confidence, imagenet_class}`` dicts
-    for recognised food classes, sorted by descending confidence.
-    Only returns matches that map to local nutrition DB items.
-    Returns an empty list if no food class is recognised.
+    Returns a list of ``{name, confidence, food101_class}`` dicts
+    for recognised classes that map to a local nutrition DB entry,
+    sorted by descending confidence.  Returns [] if nothing maps.
     """
     try:
         _load_model()
     except Exception as e:
-        print(f"[ResNet] failed to load model: {e}")
+        print(f"[ViT-Food101] failed to load model: {e}")
         return []
 
     try:
         img = Image.open(image_path).convert("RGB")
-        img_tensor = _preprocess(img).unsqueeze(0)
-
-        with torch.no_grad():
-            logits = _model(img_tensor)
-            probs = torch.softmax(logits, dim=-1)
-
-        # Get top-k across ALL 1000 classes first
-        values, indices = probs[0].topk(min(top_k * 3, 50))
+        raw = _pipe(img)           # list of {label, score}, all 101 classes
 
         results = []
-        for val, idx in zip(values, indices):
-            idx_int = int(idx)
-            db_name = IMAGENET_TO_DB.get(idx_int)
+        for item in raw:
+            label = item["label"]    # e.g. "grilled_salmon"
+            db_name = FOOD101_TO_DB.get(label)
             if db_name is not None:
                 results.append({
                     "name": db_name,
-                    "confidence": round(float(val), 4),
-                    "imagenet_class": _categories[idx_int],
+                    "confidence": round(float(item["score"]), 4),
+                    "food101_class": label,
                 })
                 if len(results) >= top_k:
                     break
 
         if results:
-            print(f"[ResNet] top match: {results[0]['name']} "
-                  f"({results[0]['confidence']:.1%}, "
-                  f"ImageNet: {results[0]['imagenet_class']})")
+            print(
+                f"[ViT-Food101] top match: {results[0]['name']} "
+                f"({results[0]['confidence']:.1%}, "
+                f"Food-101: {results[0]['food101_class']})"
+            )
 
         return results
 
     except Exception as e:
-        print(f"[ResNet] classification failed: {e}")
+        print(f"[ViT-Food101] classification failed: {e}")
         return []
 
 
 def get_all_predictions(image_path: str) -> list[dict]:
-    """Return ALL ImageNet predictions (for debugging)."""
+    """Return ALL Food-101 predictions (for debugging)."""
     try:
         _load_model()
     except Exception:
@@ -126,21 +187,14 @@ def get_all_predictions(image_path: str) -> list[dict]:
 
     try:
         img = Image.open(image_path).convert("RGB")
-        img_tensor = _preprocess(img).unsqueeze(0)
-
-        with torch.no_grad():
-            logits = _model(img_tensor)
-            probs = torch.softmax(logits, dim=-1)
-
-        values, indices = probs[0].topk(10)
+        raw = _pipe(img)
         return [
             {
-                "index": int(idx),
-                "class": _categories[int(idx)],
-                "confidence": round(float(val), 4),
-                "db_name": IMAGENET_TO_DB.get(int(idx)),
+                "food101_class": item["label"],
+                "confidence": round(float(item["score"]), 4),
+                "db_name": FOOD101_TO_DB.get(item["label"]),
             }
-            for val, idx in zip(values, indices)
+            for item in raw[:10]
         ]
     except Exception:
         return []
