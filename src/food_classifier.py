@@ -88,6 +88,88 @@ def _load_model():
     print(f"[CLIP] ready — {len(_labels)} food labels indexed")
 
 
+# ── Ingredient-only CLIP embeddings (lazy) ───────────────────
+_ingredient_labels = None
+_ingredient_features = None
+
+INGREDIENT_PROMPTS = [
+    "a photo of a {}",
+    "a {}, a single fresh ingredient",
+    "a close-up photo of {}",
+]
+
+
+def _load_ingredient_embeddings():
+    """Pre-compute CLIP embeddings for local DB labels only."""
+    global _ingredient_labels, _ingredient_features
+
+    if _ingredient_features is not None:
+        return
+
+    _load_model()
+
+    db_path = os.path.join(
+        os.path.dirname(__file__), "..", "data", "nutrition_db.json",
+    )
+    with open(db_path) as f:
+        db = json.load(f)
+    _ingredient_labels = sorted(db.keys())
+
+    # Prompt ensembling: average embeddings across templates
+    all_features = []
+    for template in INGREDIENT_PROMPTS:
+        prompts = [template.format(name) for name in _ingredient_labels]
+        tokens = _tokenizer(prompts)
+        with torch.no_grad():
+            feats = _model.encode_text(tokens)
+            feats /= feats.norm(dim=-1, keepdim=True)
+            all_features.append(feats)
+
+    _ingredient_features = torch.stack(all_features).mean(dim=0)
+    _ingredient_features /= _ingredient_features.norm(dim=-1, keepdim=True)
+
+    print(f"[CLIP] ingredient embeddings ready — "
+          f"{len(_ingredient_labels)} labels")
+
+
+def classify_ingredient(image_path: str, top_k: int = 5) -> list[dict]:
+    """Classify a single ingredient using CLIP with DB-only labels.
+
+    Uses only local nutrition DB labels (~90 raw ingredients) instead
+    of the full Food-101 + DB set.  This avoids probability dilution
+    from dish categories (e.g. tomato vs. caprese salad).
+
+    Uses prompt ensembling for better accuracy.
+    """
+    try:
+        _load_ingredient_embeddings()
+    except Exception as e:
+        print(f"[CLIP] failed to load ingredient embeddings: {e}")
+        return []
+
+    try:
+        img = Image.open(image_path).convert("RGB")
+        img_tensor = _preprocess(img).unsqueeze(0)
+
+        with torch.no_grad():
+            image_features = _model.encode_image(img_tensor)
+            image_features /= image_features.norm(dim=-1, keepdim=True)
+
+            similarity = (
+                image_features @ _ingredient_features.T
+            ).softmax(dim=-1)
+            values, indices = similarity[0].topk(top_k)
+
+        return [
+            {"name": _ingredient_labels[idx],
+             "confidence": round(float(val), 4)}
+            for val, idx in zip(values, indices)
+        ]
+    except Exception as e:
+        print(f"[CLIP] ingredient classification failed: {e}")
+        return []
+
+
 def classify_food(image_path: str, top_k: int = 3) -> list[dict]:
     """Classify food in an image using CLIP zero-shot inference.
 

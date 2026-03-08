@@ -23,7 +23,8 @@ except ImportError:
 
 from src.inference import predict_meal
 from src.effective_carbs import bolus_recommendation_from_config
-from src.food_classifier import classify_food
+from src.food_classifier import classify_food, classify_ingredient
+from src.imagenet_classifier import classify_single_food
 from src.nutrition_lookup import calculate_macros, list_foods, lookup_food
 
 meal_bp = Blueprint("meal", __name__)
@@ -275,6 +276,10 @@ def analyse_meal():
 def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict | tuple:
     """Single-item pipeline: classify → lookup → estimate weight → calc.
 
+    Uses ResNet-50 (ImageNet) as primary classifier — it has explicit
+    classes for fruits, vegetables and common foods.  Falls back to
+    CLIP (Food-101 + local DB labels) when ResNet has no food match.
+
     Returns a prediction dict or a (jsonify(error), status) tuple.
     """
     food_name = dish["name"]
@@ -283,6 +288,7 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
 
     temp_paths = []
     classification = []
+    classifier_used = None
 
     # Save uploaded image
     if files:
@@ -291,23 +297,36 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
         all_temp_paths.append(path)
 
     # 1. Classify food name from image (if not manually provided)
-    MIN_CLIP_CONFIDENCE = 0.10
+    MIN_RESNET_CONFIDENCE = 0.05
+    MIN_CLIP_CONFIDENCE   = 0.08
 
     if not food_name and temp_paths:
-        classification = classify_food(temp_paths[0], top_k=3)
-        if classification and classification[0]["confidence"] >= MIN_CLIP_CONFIDENCE:
+        # Primary: ResNet-50 (ImageNet) — best for raw ingredients
+        classification = classify_single_food(temp_paths[0], top_k=5)
+        if classification and classification[0]["confidence"] >= MIN_RESNET_CONFIDENCE:
             food_name = classification[0]["name"]
-            print(f"[SINGLE] CLIP classified: {food_name} "
+            classifier_used = "resnet"
+            print(f"[SINGLE] ResNet classified: {food_name} "
                   f"({classification[0]['confidence']:.1%})")
         else:
+            # Fallback: CLIP with ingredient-only labels
+            print("[SINGLE] ResNet found no food match, trying CLIP …")
+            classification = classify_ingredient(temp_paths[0], top_k=5)
+            if classification and classification[0]["confidence"] >= MIN_CLIP_CONFIDENCE:
+                food_name = classification[0]["name"]
+                classifier_used = "clip"
+                print(f"[SINGLE] CLIP classified: {food_name} "
+                      f"({classification[0]['confidence']:.1%})")
+
+        if not food_name:
             top = classification[0] if classification else None
             hint = (f" Best guess: '{top['name']}' "
                     f"({top['confidence']:.0%} confidence)."
                     if top else "")
             return (
                 jsonify({"error": f"Dish {dish_num}: Could not confidently "
-                                  "classify food from image (need ≥10% "
-                                  f"confidence).{hint} Please enter the food "
+                                  "classify food from image."
+                                  f"{hint} Please enter the food "
                                   "name manually."}),
                 422,
             )
@@ -321,7 +340,7 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
     # 2. Look up nutrition per 100 g
     macros_per100 = lookup_food(food_name)
 
-    # If CLIP name didn't match, try the top-3 candidates
+    # If classifier name didn't match, try the other candidates
     if macros_per100 is None and classification:
         for candidate in classification[1:]:
             macros_per100 = lookup_food(candidate["name"])
@@ -376,6 +395,7 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
         "name": food_name,
         "num_images": len(temp_paths),
         "mode": "single",
+        "classifier": classifier_used or "manual",
         "source": macros_per100.get("source", ""),
         "usda_description": macros_per100.get(
             "usda_description", food_name,
