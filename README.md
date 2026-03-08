@@ -2,11 +2,18 @@
 
 A deep learning pipeline that estimates **food weight**, **carbohydrates**, **protein**, **fat**, and **effective carbs** from meal photos — designed as decision-support for people with insulin-dependent diabetes.
 
-> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.5). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
+> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.6). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
 
 ---
 
 ## Changelog
+
+### v1.0.6
+- Replaced CLIP with pre-trained **ResNet-50 (ImageNet-1K)** as the primary classifier for single food items — directly recognises fruits, vegetables and common foods (orange, banana, tomato, broccoli, etc.)
+- Added `classify_ingredient()` CLIP fallback with **ingredient-only labels** (~90 DB items) and **prompt ensembling** (3 templates) — avoids probability dilution from Food-101 dish categories
+- New `src/imagenet_classifier.py` module with 21 ImageNet food class → nutrition DB mappings
+- Confidence thresholds: ResNet ≥5%, CLIP ingredient fallback ≥8%
+- API response now includes `classifier` field (`resnet` / `clip` / `manual`)
 
 ### v1.0.5
 - Significantly improved UI design with full responsive layout (mobile, tablet, desktop)
@@ -111,6 +118,7 @@ L41_HomeWork/
 │   ├── inference.py               # Prediction pipeline (1-3 images)
 │   ├── effective_carbs.py         # Effective carbs formula engine
 │   ├── food_classifier.py         # CLIP zero-shot food classification
+│   ├── imagenet_classifier.py     # ResNet-50 (ImageNet) single-food classifier
 │   ├── nutrition_lookup.py        # USDA API + local JSON nutrition DB
 │   └── personalization.py         # User meal store + calibration layer
 │
@@ -211,8 +219,10 @@ graph TD
     A --> B{"Mode?"}
 
     subgraph SinglePipeline ["Single Item Pipeline"]
-        B -->|single| C["CLIP ViT-B-32<br/>Zero-shot classify<br/>(src/food_classifier.py)"]
-        C --> D["Food name<br/>e.g. 'tomato'"]
+        B -->|single| C["ResNet-50 (ImageNet)<br/>Primary classifier<br/>(src/imagenet_classifier.py)"]
+        C -->|no food match| C2["CLIP ViT-B-32<br/>Ingredient-only fallback<br/>(src/food_classifier.py)"]
+        C -->|food found| D["Food name<br/>e.g. 'orange'"]
+        C2 --> D
         D --> E["USDA API / Local DB<br/>Nutrition per 100g<br/>(src/nutrition_lookup.py)"]
         A2["Same image"] --> F["Nutrition5k Model<br/>Weight estimation<br/>(src/inference.py)"]
         E --> G["macros = per_100g<br/>× weight / 100"]
