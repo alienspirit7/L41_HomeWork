@@ -276,9 +276,9 @@ def analyse_meal():
 def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict | tuple:
     """Single-item pipeline: classify → lookup → estimate weight → calc.
 
-    Uses ResNet-50 (ImageNet) as primary classifier — it has explicit
-    classes for fruits, vegetables and common foods.  Falls back to
-    CLIP (Food-101 + local DB labels) when ResNet has no food match.
+    Runs BOTH ResNet-50 (ImageNet) and CLIP (ingredient-only labels)
+    and picks whichever has higher confidence.  This covers each
+    model's blind spots (e.g. ImageNet has no tomato class).
 
     Returns a prediction dict or a (jsonify(error), status) tuple.
     """
@@ -297,26 +297,37 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
         all_temp_paths.append(path)
 
     # 1. Classify food name from image (if not manually provided)
-    MIN_RESNET_CONFIDENCE = 0.05
-    MIN_CLIP_CONFIDENCE   = 0.08
+    MIN_CONFIDENCE = 0.03
 
     if not food_name and temp_paths:
-        # Primary: ResNet-50 (ImageNet) — best for raw ingredients
-        classification = classify_single_food(temp_paths[0], top_k=5)
-        if classification and classification[0]["confidence"] >= MIN_RESNET_CONFIDENCE:
-            food_name = classification[0]["name"]
+        # Run BOTH classifiers and pick the best answer.
+        # ResNet excels at ImageNet foods (orange, banana, broccoli).
+        # CLIP excels at items not in ImageNet (tomato, avocado, egg).
+        resnet_results = classify_single_food(temp_paths[0], top_k=5)
+        clip_results   = classify_ingredient(temp_paths[0], top_k=5)
+
+        resnet_top = resnet_results[0] if resnet_results else None
+        clip_top   = clip_results[0]   if clip_results   else None
+
+        resnet_conf = resnet_top["confidence"] if resnet_top else 0
+        clip_conf   = clip_top["confidence"]   if clip_top   else 0
+
+        if resnet_conf >= clip_conf and resnet_conf >= MIN_CONFIDENCE:
+            food_name = resnet_top["name"]
+            classification = resnet_results
             classifier_used = "resnet"
-            print(f"[SINGLE] ResNet classified: {food_name} "
-                  f"({classification[0]['confidence']:.1%})")
-        else:
-            # Fallback: CLIP with ingredient-only labels
-            print("[SINGLE] ResNet found no food match, trying CLIP …")
-            classification = classify_ingredient(temp_paths[0], top_k=5)
-            if classification and classification[0]["confidence"] >= MIN_CLIP_CONFIDENCE:
-                food_name = classification[0]["name"]
-                classifier_used = "clip"
-                print(f"[SINGLE] CLIP classified: {food_name} "
-                      f"({classification[0]['confidence']:.1%})")
+        elif clip_conf >= MIN_CONFIDENCE:
+            food_name = clip_top["name"]
+            classification = clip_results
+            classifier_used = "clip"
+
+        if food_name:
+            print(f"[SINGLE] {classifier_used.upper()} won: {food_name} "
+                  f"({classification[0]['confidence']:.1%})"
+                  f"  [ResNet: {resnet_top['name'] if resnet_top else '-'}"
+                  f" {resnet_conf:.1%},"
+                  f" CLIP: {clip_top['name'] if clip_top else '-'}"
+                  f" {clip_conf:.1%}]")
 
         if not food_name:
             top = classification[0] if classification else None
