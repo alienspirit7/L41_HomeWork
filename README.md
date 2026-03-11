@@ -2,11 +2,16 @@
 
 A deep learning pipeline that estimates **food weight**, **carbohydrates**, **protein**, **fat**, and **effective carbs** from meal photos — designed as decision-support for people with insulin-dependent diabetes.
 
-> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.9). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
+> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.10). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
 
 ---
 
 ## Changelog
+
+### v1.0.10
+- **Fixed CLIP `logit_scale` temperature bug**: softmax was computed on raw logits without dividing by `exp(logit_scale)`, causing near-uniform probability distributions (e.g. tomato: 1.2% → 99.9% after fix)
+- **Restored CLIP confidence threshold**: threshold was meaningful again once temperature scaling was applied correctly
+- **Added mandarin/tangerine to nutrition DB**: citrus variants now resolve correctly via CLIP zero-shot fallback
 
 ### v1.0.9
 - **Startup model preloading**: ViT and CLIP models load in a background thread at container boot — eliminates ~10-15s first-request penalty
