@@ -41,6 +41,23 @@ def create_app(config_path: str = "configs/default.yaml"):
     init_meal_blueprint(cfg, checkpoint)
     app.register_blueprint(meal_bp)
 
+    # Pre-load classifier models in background so first request is fast
+    import threading
+
+    def _preload_models():
+        try:
+            from src.imagenet_classifier import _load_model as load_vit
+            load_vit()
+        except Exception as e:
+            print(f"[PRELOAD] ViT failed: {e}")
+        try:
+            from src.food_classifier import _load_model as load_clip
+            load_clip()
+        except Exception as e:
+            print(f"[PRELOAD] CLIP failed: {e}")
+
+    threading.Thread(target=_preload_models, daemon=True).start()
+
     @app.errorhandler(Exception)
     def handle_error(e):
         """Return JSON errors instead of HTML debug pages."""

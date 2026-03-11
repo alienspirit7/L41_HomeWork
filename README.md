@@ -2,11 +2,16 @@
 
 A deep learning pipeline that estimates **food weight**, **carbohydrates**, **protein**, **fat**, and **effective carbs** from meal photos — designed as decision-support for people with insulin-dependent diabetes.
 
-> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.8). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
+> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.9). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
 
 ---
 
 ## Changelog
+
+### v1.0.9
+- **Startup model preloading**: ViT and CLIP models load in a background thread at container boot — eliminates ~10-15s first-request penalty
+- **Parallel weight estimation**: weight prediction runs concurrently with food classification via `ThreadPoolExecutor` — saves ~2-4s per request
+- **Cloud Run `min-instances=1`**: keeps one container warm to eliminate cold starts entirely
 
 ### v1.0.8
 - Implemented **early-exit classification**: ViT (`nateraw/food`) runs first; CLIP zero-shot fallback is only invoked when ViT returns no DB-mappable result above the confidence threshold — saves ~200–400 ms per request on the common case

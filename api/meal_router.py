@@ -297,9 +297,23 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
         all_temp_paths.append(path)
 
     # 1. Classify food name from image (if not manually provided)
+    #    Weight estimation runs IN PARALLEL via a thread pool.
     MIN_CONFIDENCE = 0.03
+    weight_future = None
 
     if not food_name and temp_paths:
+        from concurrent.futures import ThreadPoolExecutor
+
+        # Start weight estimation in background while we classify
+        if not weight_str:
+            ckpt = _checkpoint if os.path.exists(_checkpoint) else None
+
+            def _estimate_weight():
+                return predict_meal(temp_paths, _cfg, checkpoint=ckpt)
+
+            _executor = ThreadPoolExecutor(max_workers=1)
+            weight_future = _executor.submit(_estimate_weight)
+
         # Primary: ViT fine-tuned on Food-101 (101 food-specific classes).
         # Fallback: CLIP zero-shot ingredient classifier — only runs when ViT
         # returns nothing above MIN_CONFIDENCE (saves ~200–400 ms per request).
@@ -327,6 +341,9 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
                       f" {vit_conf:.1%}]")
 
         if not food_name:
+            # Cancel weight estimation — we don't need it
+            if weight_future:
+                weight_future.cancel()
             top = classification[0] if classification else None
             hint = (f" Best guess: '{top['name']}' "
                     f"({top['confidence']:.0%} confidence)."
@@ -376,11 +393,14 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
                 400,
             )
 
-    if weight_g is None and temp_paths:
-        # Use the Nutrition5k model to estimate weight
-        ckpt = (
-            _checkpoint if os.path.exists(_checkpoint) else None
-        )
+    if weight_g is None and weight_future:
+        # Collect the parallel weight estimation (already running)
+        model_pred = weight_future.result()
+        weight_g = model_pred["weight_g"]
+        print(f"[SINGLE] model estimated weight: {weight_g}g (parallel)")
+    elif weight_g is None and temp_paths:
+        # Fallback: user provided name manually, run weight est now
+        ckpt = _checkpoint if os.path.exists(_checkpoint) else None
         model_pred = predict_meal(temp_paths, _cfg, checkpoint=ckpt)
         weight_g = model_pred["weight_g"]
         print(f"[SINGLE] model estimated weight: {weight_g}g")
