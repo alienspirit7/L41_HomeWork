@@ -2,11 +2,16 @@
 
 A deep learning pipeline that estimates **food weight**, **carbohydrates**, **protein**, **fat**, and **effective carbs** from meal photos — designed as decision-support for people with insulin-dependent diabetes.
 
-> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.7). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
+> ⚠️ **Medical Disclaimer**: This is a research prototype (v1.0.8). It is **not** a certified medical device. Never use model output as final medical advice. Always review, manually adjust, and confirm estimates before using them for insulin dosing decisions.
 
 ---
 
 ## Changelog
+
+### v1.0.8
+- Implemented **early-exit classification**: ViT (`nateraw/food`) runs first; CLIP zero-shot fallback is only invoked when ViT returns no DB-mappable result above the confidence threshold — saves ~200–400 ms per request on the common case
+- Updated `_analyse_single()` docstring and inline comments to remove stale ResNet-50/ImageNet references
+- API `classifier` field now reports `vit` (primary) or `clip` (fallback) instead of `resnet`/`clip`
 
 ### v1.0.7
 - Replaced ResNet-50 (ImageNet) primary classifier with **`nateraw/food`** — a ViT fine-tuned on Food-101 (101 food-specific classes vs. ~21 mapped ImageNet classes)
