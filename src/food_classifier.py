@@ -50,11 +50,12 @@ _preprocess = None
 _tokenizer = None
 _text_features = None
 _labels = None
+_logit_scale = None
 
 
 def _load_model():
     """Load CLIP model and pre-compute text embeddings (lazy, cached)."""
-    global _model, _preprocess, _tokenizer, _text_features, _labels
+    global _model, _preprocess, _tokenizer, _text_features, _labels, _logit_scale
 
     if _model is not None:
         return
@@ -65,6 +66,7 @@ def _load_model():
     )
     _tokenizer = open_clip.get_tokenizer("ViT-B-32")
     _model.eval()
+    _logit_scale = _model.logit_scale.exp()
 
     # Build combined label set: Food-101 + local nutrition DB keys
     label_set = set(FOOD_101_LABELS)
@@ -156,7 +158,7 @@ def classify_ingredient(image_path: str, top_k: int = 5) -> list[dict]:
             image_features /= image_features.norm(dim=-1, keepdim=True)
 
             similarity = (
-                image_features @ _ingredient_features.T
+                _logit_scale * image_features @ _ingredient_features.T
             ).softmax(dim=-1)
             values, indices = similarity[0].topk(top_k)
 
@@ -190,7 +192,7 @@ def classify_food(image_path: str, top_k: int = 3) -> list[dict]:
             image_features = _model.encode_image(img_tensor)
             image_features /= image_features.norm(dim=-1, keepdim=True)
 
-            similarity = (image_features @ _text_features.T).softmax(dim=-1)
+            similarity = (_logit_scale * image_features @ _text_features.T).softmax(dim=-1)
             values, indices = similarity[0].topk(top_k)
 
         return [

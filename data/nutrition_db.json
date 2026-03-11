@@ -244,6 +244,20 @@
         "fiber_g": 2.4,
         "calories": 47
     },
+    "mandarin": {
+        "carbs_g": 13.3,
+        "protein_g": 0.8,
+        "fat_g": 0.3,
+        "fiber_g": 1.8,
+        "calories": 53
+    },
+    "tangerine": {
+        "carbs_g": 13.3,
+        "protein_g": 0.8,
+        "fat_g": 0.3,
+        "fiber_g": 1.8,
+        "calories": 53
+    },
     "pasta cooked": {
         "carbs_g": 25.0,
         "protein_g": 5.0,

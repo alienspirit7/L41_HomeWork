@@ -327,12 +327,13 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
             classifier_used = "vit"
             print(f"[SINGLE] VIT won: {food_name} ({vit_conf:.1%})")
         else:
-            # ViT not confident — try CLIP
+            # ViT not confident — CLIP fallback (always accept top-1,
+            # since Food-101 has no raw fruit/veggie classes).
             clip_results = classify_ingredient(temp_paths[0], top_k=5)
             clip_top = clip_results[0] if clip_results else None
             clip_conf = clip_top["confidence"] if clip_top else 0
 
-            if clip_conf >= MIN_CONFIDENCE:
+            if clip_top and clip_conf >= 0.01:
                 food_name = clip_top["name"]
                 classification = clip_results
                 classifier_used = "clip"
@@ -344,14 +345,9 @@ def _analyse_single(dish: dict, all_temp_paths: list, dish_num: int = 1) -> dict
             # Cancel weight estimation — we don't need it
             if weight_future:
                 weight_future.cancel()
-            top = classification[0] if classification else None
-            hint = (f" Best guess: '{top['name']}' "
-                    f"({top['confidence']:.0%} confidence)."
-                    if top else "")
             return (
-                jsonify({"error": f"Dish {dish_num}: Could not confidently "
-                                  "classify food from image."
-                                  f"{hint} Please enter the food "
+                jsonify({"error": f"Dish {dish_num}: Could not classify "
+                                  "food from image. Please enter the food "
                                   "name manually."}),
                 422,
             )
